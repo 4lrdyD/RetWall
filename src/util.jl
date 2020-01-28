@@ -1,5 +1,6 @@
 #revisión 0.0.1 27-01-2020, 23:50 Julia1.1.0
 import LinearAlgebra: norm
+export VolatileArray
 mutable struct VolatileArray{T,N}<:AbstractArray{T,N}
     arr::Array{T,1}
     height::Int64
