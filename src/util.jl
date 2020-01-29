@@ -1,4 +1,4 @@
-#revisión 0.0.1 27-01-2020, 23:50 Julia1.1.0
+#revisión 0.0.2 29-01-2020, 00:40 Julia1.1.0
 import LinearAlgebra: norm
 export VolatileArray
 mutable struct VolatileArray{T,N}<:AbstractArray{T,N}
@@ -87,15 +87,9 @@ function Base.push!(x::VolatileArray{T,2},n::Array{T,N}) where {T<:Real,N}
     ly=size(n)[1];
     lx=length(size(n))==1 ? 1 : size(n)[2];
     if ly==1 && lx==dimx
-        #1 para guardar el elemento a eliminar antes de usar splice!
-        #y 2 para el elemento a insertar
-        len=2;
-        app=zeros(T,2);
         for i in 1:dimx
-            idr=i*dimy+(i-1);
-            @inbounds app[1]=x.arr[idr];
-            @inbounds app[2]=n[i];
-            @inbounds splice!(x.arr,idr,app);
+            idr=i*dimy+i;
+            @inbounds insert!(x.arr,idr,n[i]);
         end
         x.height+=1;
     elseif lx==1 && ly==dimy
@@ -288,8 +282,7 @@ function ka_rankine(fi::Real,alpha::Real)
 end
 
 """
-    function ka_rankine(fi::Real,alpha::Real,c::Real,
-        gamma::Real,z::Real)
+    ka_rankine(fi::Real,alpha::Real,c::Real,gamma::Real,z::Real)
 Calcula el coeficiente de presión activa de Rankine, siendo:
 *   `fi`: el ángulo de fricción por esfuerzo efectivo
      en grados sexagesimales.
@@ -329,8 +322,7 @@ function ka_rankine(fi::Real,alpha::Real,c::Real,
 end
 
 """
-    ka_coulomb(fi::T,delta::M,beta::N,alpha::O) where {
-        T<:Real, M<:Real, N<:Real, O<:Real}
+    ka_coulomb(fi::Real,delta::Real,beta::Real,alpha::Real)
 Calcula el coeficiente de presión activa de Coulomb, siendo:
 *   `fi`: el ángulo de fricción por esfuerzo efectivo
      en grados sexagesimales.
@@ -342,8 +334,7 @@ Calcula el coeficiente de presión activa de Coulomb, siendo:
 
 Todos los ángulos deben ser ingresados en grados sexagesimales.
 """
-function ka_coulomb(fi::T,delta::M,beta::N,alpha::O) where {
-    T<:Real, M<:Real, N<:Real, O<:Real}
+function ka_coulomb(fi::Real,delta::Real,beta::Real,alpha::Real)
     #convirtiendo los ángulos a radianes
     fr=deg2rad(fi);
     dr=deg2rad(delta);
@@ -356,14 +347,14 @@ function ka_coulomb(fi::T,delta::M,beta::N,alpha::O) where {
 end
 
 """
-    kr_maku(fi::T,OCR::N) where {T<:Real, N<:Real}
+    kr_maku(fi::Real,OCR::Real)
 Calcula el coeficiente de presión en reposo de Mayne y Kulhawy,
  siendo:
 *   `fi`: el ángulo de fricción por esfuerzo efectivo
      en grados sexagesimales.
 *   `OCR`: relación de sobreconsolidación.
 """
-function kr_maku(fi::T,OCR::N) where {T<:Real, N<:Real}
+function kr_maku(fi::Real,OCR::Real)
     #convirtiendo los ángulos a radianes
     fr=deg2rad(fi);
 
@@ -373,19 +364,17 @@ function kr_maku(fi::T,OCR::N) where {T<:Real, N<:Real}
 end
 
 """
-    kr_sch(OCR::T) where {T<:Real}
+    kr_sch(OCR::Real)
 Calcula el coeficiente de presión en reposo de Schmertmann,
  siendo:
 *   `OCR`: relación de sobreconsolidación.
 """
-function kr_sch(OCR::T) where {T<:Real}
-    return 0.5*OCR^0.5;
-end
+kr_sch(OCR::Real)=0.5*OCR^0.5;
 
 """
-    function build_wall(nodes::Array{T,2},
-        elm::Array{N,2},elmp::Array{T,2},pbreak::N) where {
-        T<:Real,N<:Integer}
+    build_wall(nodes::Array{T,2},
+        elm::Array{<:Integer,2},elmp::Array{T,2},
+        pbreak::Integer) where {T<:Real}
 Constructor del muro, calculará el área y el centro de gravedad de todos los
 elementos.
 *   `nodes`: matriz de nudos, cada fila de esta matriz deberá contener las
@@ -404,71 +393,82 @@ elementos.
 
 """
 function build_wall(nodes::Array{T,2},
-    elm::Array{N,2},elmp::Array{T,2},pbreak::N) where {
-    T<:Real,N<:Integer}
+    elm::Array{<:Integer,2},elmp::Array{T,2},pbreak::Integer) where {T<:Real}
     #número de elementos en cada matriz
     nel=size(elm)[1];
 
     #pbreak indica el punto donde terminan los elementos
     #triangulares
-    for i in 1:pbreak
-        #nudos (índices)
-        @inbounds n1=elm[i,1];
-        @inbounds n2=elm[i,2];
-        @inbounds n3=elm[i,3];
-
-        #nudos (coordenadas)
-        @inbounds x1=nodes[n1,1];
-        @inbounds y1=nodes[n1,2];
-        @inbounds x2=nodes[n2,1];
-        @inbounds y2=nodes[n2,2];
-        @inbounds x3=nodes[n3,1];
-        @inbounds y3=nodes[n3,2];
-
-        #baricentro
-        @inbounds elmp[i,2]=(x1+x2+x3)/3;
-        @inbounds elmp[i,3]=(y1+y2+y3)/3;
-
-        #área
-        @inbounds elmp[i,1]=(x2*y3-y2*x3-x1*y3+y1*x3+
-                        x1*y2-y1*x2)/2;
+    if pbreak>0
+        for i in 1:pbreak
+            build_tri(nodes,elm,elmp,i);
+        end
     end
 
     if pbreak<nel
         for i in pbreak+1:nel
-            #nudos (índices)
-            @inbounds n1=elm[i,1];
-            @inbounds n2=elm[i,2];
-            @inbounds n3=elm[i,3];
-            @inbounds n4=elm[i,4];
-
-            #nudos (coordenadas)
-            @inbounds x1=nodes[n1,1];
-            @inbounds y1=nodes[n1,2];
-            @inbounds x2=nodes[n2,1];
-            @inbounds y2=nodes[n2,2];
-            @inbounds x3=nodes[n3,1];
-            @inbounds y3=nodes[n3,2];
-            @inbounds x4=nodes[n4,1];
-            @inbounds y4=nodes[n4,2];
-
-            #áreas de los componentes triangulares
-            @inbounds A1=(x2*y3-y2*x3-x1*y3+y1*x3+
-                            x1*y2-y1*x2)/2;
-            @inbounds A2=(x3*y4-y3*x4-x1*y4+y1*x4+
-                            x1*y3-y1*x3)/2;
-            @inbounds elmp[i,1]=A1+A2;
-
-            #baricentros
-            @inbounds xm1=(x1+x2+x3)/3;
-            @inbounds ym1=(y1+y2+y3)/3;
-            @inbounds xm2=(x1+x3+x4)/3;
-            @inbounds ym2=(y1+y3+y4)/3;
-            @inbounds elmp[i,2]=(A1*xm1+A2*xm2)/elmp[i,1];
-            @inbounds elmp[i,3]=(A1*ym1+A2*ym2)/elmp[i,1];
+            buil_quad(nodes,elm,elmp,i);
         end
     end
     return elmp;
+end
+
+function build_tri(nodes::Array{T,2},
+    elm::Array{<:Integer,2},elmp::Array{T,2},id::Integer) where {T<:Real}
+    #nudos (índices)
+    @inbounds n1=elm[id,1];
+    @inbounds n2=elm[id,2];
+    @inbounds n3=elm[id,3];
+
+    #nudos (coordenadas)
+    @inbounds x1=nodes[n1,1];
+    @inbounds y1=nodes[n1,2];
+    @inbounds x2=nodes[n2,1];
+    @inbounds y2=nodes[n2,2];
+    @inbounds x3=nodes[n3,1];
+    @inbounds y3=nodes[n3,2];
+
+    #baricentro
+    @inbounds elmp[id,2]=(x1+x2+x3)/3;
+    @inbounds elmp[id,3]=(y1+y2+y3)/3;
+
+    #área
+    @inbounds elmp[id,1]=(x2*y3-y2*x3-x1*y3+y1*x3+
+                    x1*y2-y1*x2)/2;
+end
+
+function buil_quad(nodes::Array{T,2},
+    elm::Array{<:Integer,2},elmp::Array{T,2},id::Integer) where {T<:Real}
+    #nudos (índices)
+    @inbounds n1=elm[id,1];
+    @inbounds n2=elm[id,2];
+    @inbounds n3=elm[id,3];
+    @inbounds n4=elm[id,4];
+
+    #nudos (coordenadas)
+    @inbounds x1=nodes[n1,1];
+    @inbounds y1=nodes[n1,2];
+    @inbounds x2=nodes[n2,1];
+    @inbounds y2=nodes[n2,2];
+    @inbounds x3=nodes[n3,1];
+    @inbounds y3=nodes[n3,2];
+    @inbounds x4=nodes[n4,1];
+    @inbounds y4=nodes[n4,2];
+
+    #áreas de los componentes triangulares
+    @inbounds A1=(x2*y3-y2*x3-x1*y3+y1*x3+
+                    x1*y2-y1*x2)/2;
+    @inbounds A2=(x3*y4-y3*x4-x1*y4+y1*x4+
+                    x1*y3-y1*x3)/2;
+    @inbounds elmp[id,1]=A1+A2;
+
+    #baricentros
+    @inbounds xm1=(x1+x2+x3)/3;
+    @inbounds ym1=(y1+y2+y3)/3;
+    @inbounds xm2=(x1+x3+x4)/3;
+    @inbounds ym2=(y1+y3+y4)/3;
+    @inbounds elmp[id,2]=(A1*xm1+A2*xm2)/elmp[id,1];
+    @inbounds elmp[id,3]=(A1*ym1+A2*ym2)/elmp[id,1];
 end
 
 """
