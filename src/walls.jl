@@ -1,4 +1,4 @@
-#revisión 0.0.1 29-01-2020, 00:40 Julia1.1.0
+#revisión 0.0.2 01-02-2020, 01:40 Julia1.1.0
 export Wproperties, gravity_wall
 mutable struct Wproperties{T}
     nod::VolatileArray{T,2}
@@ -17,10 +17,10 @@ end
 function Base.show(io::IO,x::Wproperties{<:Real})
     print(io,"$(typeof(x))\n");
     print(io,"Fields:\n")
-    print(io,"nod   :$(size(x.nod)[1])x$(size(x.nod)[2]) $(typeof(x.nod))\n");
-    print(io,"elm   :$(size(x.elm)[1])x$(size(x.elm)[2]) $(typeof(x.elm))\n");
-    print(io,"prop  :$(size(x.prop)[1])x$(size(x.prop)[2]) $(typeof(x.prop))\n");
-    print(io,"pbreak:$(x.pbreak) $(typeof(x.pbreak))");
+    print(io,"   nod: $(size(x.nod)[1])x$(size(x.nod)[2]) $(typeof(x.nod))\n");
+    print(io,"   elm: $(size(x.elm)[1])x$(size(x.elm)[2]) $(typeof(x.elm))\n");
+    print(io,"  prop: $(size(x.prop)[1])x$(size(x.prop)[2]) $(typeof(x.prop))\n");
+    print(io,"pbreak: $(x.pbreak) $(typeof(x.pbreak))");
 end
 """
     gravity_wall(;hp::Real, hz::Real, t1::Real, t2::Real, t3::Real,
