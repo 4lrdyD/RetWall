@@ -1,4 +1,4 @@
-#revisión 0.0.3 01-02-2020, 01:40 Julia1.1.0
+#revisión 0.0.4 05-02-2020, 01:50 Julia1.1.0
 import LinearAlgebra: norm
 export VolatileArray
 mutable struct VolatileArray{T,N}<:AbstractArray{T,N}
@@ -39,13 +39,12 @@ function Base.setindex!(x::VolatileArray{T,2},value::N,
     else
         #aumentando la altura
         if idy>h
-            #+1 para guardar el elemento a eliminar antes de usar splice!
-            len=idy-h+1;
+            len=idy-h;
             app=zeros(T,len);
             for i in 1:w
-                idr=i*h+(i-1)*(len-1);
-                @inbounds app[1]=x.arr[idr];
-                @inbounds splice!(x.arr,idr,app);
+                idr=i*h+(i-1)*len;
+                @inbounds insert!(x.arr,idr+1,0);
+                @inbounds splice!(x.arr,idr+1,app);
             end
             h=idy;
             x.height=h;
@@ -119,14 +118,10 @@ function Base.append!(x::VolatileArray{T,2},n::Array{T,N}; dim::Int64=2
     ly=size(n)[1];
     lx=length(size(n))==1 ? 1 : size(n)[2];
     if lx==dimx && (ly!=dimy || dim==1)
-        #+1 para guardar el elemento a eliminar antes de usar splice!
-        len=ly+1;
-        app=zeros(T,len);
         for i in 1:dimx
             idr=i*dimy+(i-1)*ly;
-            @inbounds app[1]=x.arr[idr];
-            @inbounds app[2:len]=n[1:ly,i];
-            @inbounds splice!(x.arr,idr,app);
+            @inbounds insert!(x.arr,idr+1,0)
+            @inbounds splice!(x.arr,idr+1,n[1:ly,i]);
         end
         x.height+=ly;
     elseif ly==dimy && (lx!=dimx || dim==2)
