@@ -1,4 +1,4 @@
-#revisión 0.0.4 06-02-2020, 02:00 Julia1.1.0
+#revisión 0.0.5 12-02-2020, 00:35 Julia1.1.0
 export Wmodel, gravity_wall,addsoil!, addmat!
 mutable struct Wmodel{T}
     #nudos para el muro
@@ -30,6 +30,12 @@ mutable struct Wmodel{T}
     #propiedades de suelos una prop en cada fila
     soilprop::VolatileArray{T,2}
 
+    #ángulo de inclinación del terreno en grados sexagesimales
+    alpha::Real
+
+    #profundidad de desplante de la cimentación del muro
+    D::Real
+
     function Wmodel(nod::VolatileArray{T,2}, elm::VolatileArray{Int64,2},
         prop::VolatileArray{T,2},pbreak::Int64) where {T<:Real}
         if size(prop)[1]==size(elm)[1]
@@ -37,7 +43,7 @@ mutable struct Wmodel{T}
             matprop=VolatileArray(zeros(0,3));
             pnod=VolatileArray(zeros(0,2));
             pline=VolatileArray(zeros(Int64,0,5));
-            new{T}(nod,elm,prop,pbreak,matprop,pnod,pline,soilprop);
+            new{T}(nod,elm,prop,pbreak,matprop,pnod,pline,soilprop,0,-1);
         else
             error("las alturas de elm y prop deben ser iguales")
         end
@@ -51,6 +57,12 @@ function Base.show(io::IO,x::Wmodel{<:Real})
     print(io,"  prop: $(size(x.prop)[1])x$(size(x.prop)[2]) $(typeof(x.prop))\n");
     print(io,"pbreak: $(x.pbreak) $(typeof(x.pbreak))");
 end
+
+function build_wall(model::Wmodel{<:Real})
+    build_wall(Array(model.nod),Array(model.elm),Array(model.prop),
+        model.pbreak);
+end
+
 """
     gravity_wall(;hp::Real, hz::Real, t1::Real, t2::Real, t3::Real,
         b1::Real,b2::Real)
