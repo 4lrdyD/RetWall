@@ -1,5 +1,5 @@
-#revisión 0.0.1 30-01-2020, 01:00 Julia1.1.0
-function report(hp,hz,t1,t2,t3,b1,b2,grav)
+#revisión 0.0.2 15-02-2020, 01:00 Julia1.1.0
+function report(hp,hz,t1,t2,t3,b1,b2,grav,prop)
 a="
 \\documentclass[oneside,spanish]{scrbook}
 \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
@@ -28,36 +28,8 @@ Las dimensiones del muro son:\\\\
           width=\\linewidth, yticklabels=\\empty,xticklabels=\\empty,
             ytick=\\empty,xtick=\\empty,axis line style={draw=none}
         ]
-        \\addplot[black=50!]
-        table[x=x,y=y,col sep=&,row sep=\\\\] {x & y\\\\
-		$(grav.nod[grav.elm[1,1],1]) & $(grav.nod[grav.elm[1,1],2])\\\\
-		$(grav.nod[grav.elm[1,2],1]) & $(grav.nod[grav.elm[1,2],2])\\\\
-		$(grav.nod[grav.elm[1,3],1]) & $(grav.nod[grav.elm[1,3],2])\\\\
-		$(grav.nod[grav.elm[1,1],1]) & $(grav.nod[grav.elm[1,1],2])\\\\};
-        \\addplot[black=50!]
-        table[x=x,y=y,col sep=&,row sep=\\\\] {x & y\\\\
-		$(grav.nod[grav.elm[2,1],1]) & $(grav.nod[grav.elm[2,1],2])\\\\
-		$(grav.nod[grav.elm[2,2],1]) & $(grav.nod[grav.elm[2,2],2])\\\\
-		$(grav.nod[grav.elm[2,3],1]) & $(grav.nod[grav.elm[2,3],2])\\\\
-		$(grav.nod[grav.elm[2,1],1]) & $(grav.nod[grav.elm[2,1],2])\\\\};
-        \\addplot[black=50!]
-        table[x=x,y=y,col sep=&,row sep=\\\\] {x & y\\\\
-		$(grav.nod[grav.elm[3,1],1]) & $(grav.nod[grav.elm[3,1],2])\\\\
-		$(grav.nod[grav.elm[3,2],1]) & $(grav.nod[grav.elm[3,2],2])\\\\
-		$(grav.nod[grav.elm[3,3],1]) & $(grav.nod[grav.elm[3,3],2])\\\\
-		$(grav.nod[grav.elm[3,4],1]) & $(grav.nod[grav.elm[3,4],2])\\\\
-		$(grav.nod[grav.elm[3,1],1]) & $(grav.nod[grav.elm[3,1],2])\\\\};
-        \\addplot[black=50!]
-        table[x=x,y=y,col sep=&,row sep=\\\\] {x & y\\\\
-		$(grav.nod[grav.elm[4,1],1]) & $(grav.nod[grav.elm[4,1],2])\\\\
-		$(grav.nod[grav.elm[4,2],1]) & $(grav.nod[grav.elm[4,2],2])\\\\
-		$(grav.nod[grav.elm[4,3],1]) & $(grav.nod[grav.elm[4,3],2])\\\\
-		$(grav.nod[grav.elm[4,4],1]) & $(grav.nod[grav.elm[4,4],2])\\\\
-		$(grav.nod[grav.elm[4,1],1]) & $(grav.nod[grav.elm[4,1],2])\\\\};
-        \\draw ($(grav.prop[1,2]),$(grav.prop[1,3]))node{\\small{1}};
-        \\draw ($(grav.prop[2,2]),$(grav.prop[2,3]))node{\\small{2}};
-        \\draw ($(grav.prop[3,2]),$(grav.prop[3,3]))node{\\small{3}};
-        \\draw ($(grav.prop[4,2]),$(grav.prop[4,3]))node{\\small{4}};
+        $(draw_wall_lcode(grav))
+        $(draw_elm_label_lcode(prop))
       \\end{axis}
     \\end{tikzpicture}
   \\caption{Muro de contención de gravedad}
@@ -71,4 +43,47 @@ open("prueba1.tex", "w") do f
 #run(pipeline(`pdflatex prueba1`,stdout="log.txt",stderr="err.txt"));
 run(`pdflatex prueba1`);
 run(`cmd /c start prueba1.pdf`);
+end
+
+function draw_wall_lcode(model::Wmodel{<:Real})
+    out="";
+    #número de elementos
+    nel=size(model.elm)[1];
+
+    #pbreak indica el punto donde terminan los elementos
+    #triangulares
+    if model.pbreak>0
+        for i in 1:model.pbreak
+            out=out*"\\addplot[black=50!]
+            table[x=x,y=y,col sep=&,row sep=\\\\] {x & y\\\\
+            $(model.nod[model.elm[i,1],1]) & $(model.nod[model.elm[i,1],2])\\\\
+            $(model.nod[model.elm[i,2],1]) & $(model.nod[model.elm[i,2],2])\\\\
+            $(model.nod[model.elm[i,3],1]) & $(model.nod[model.elm[i,3],2])\\\\
+            $(model.nod[model.elm[i,1],1]) & $(model.nod[model.elm[i,1],2])\\\\};
+            "
+        end
+    end
+
+    if model.pbreak<nel
+        for i in model.pbreak+1:nel
+            out=out*"\\addplot[black=50!]
+            table[x=x,y=y,col sep=&,row sep=\\\\] {x & y\\\\
+            $(model.nod[model.elm[i,1],1]) & $(model.nod[model.elm[i,1],2])\\\\
+            $(model.nod[model.elm[i,2],1]) & $(model.nod[model.elm[i,2],2])\\\\
+            $(model.nod[model.elm[i,3],1]) & $(model.nod[model.elm[i,3],2])\\\\
+            $(model.nod[model.elm[i,4],1]) & $(model.nod[model.elm[i,4],2])\\\\
+            $(model.nod[model.elm[i,1],1]) & $(model.nod[model.elm[i,1],2])\\\\};
+            "
+        end
+    end
+    return out;
+end
+
+function draw_elm_label_lcode(prop::VolatileArray{<:Real,2})
+    out="";
+    for i in 1:size(prop)[1]
+        out=out*"\\draw ($(prop[i,2]),$(prop[i,3]))node{\\small{$i}};
+        "
+    end
+    return out;
 end

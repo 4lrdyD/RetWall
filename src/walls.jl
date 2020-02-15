@@ -1,4 +1,4 @@
-#revisión 0.0.5 12-02-2020, 00:35 Julia1.1.0
+#revisión 0.0.6 15-02-2020, 01:00 Julia1.1.0
 export Wmodel, gravity_wall,addsoil!, addmat!
 mutable struct Wmodel{T}
     #nudos para el muro
@@ -7,14 +7,11 @@ mutable struct Wmodel{T}
     #elementos del muro, se forman con los nudos
     elm::VolatileArray{Int64,2}
 
-    #propiedades de los elementos, Área y componentes del centro de gravedad
-    prop::VolatileArray{T,2}
-
     #índice del último elemento triangular en elm, los siguientes serán
     #elementos cuadrangulares
     pbreak::Int64
 
-    #propiedades de los materiales f'c, fy,peso esp. una propiedad en cada fila
+    #propiedades de los materiales un material por fila
     matprop::VolatileArray{T,2}
 
     #nudos especiales para la línea de presiones
@@ -27,7 +24,7 @@ mutable struct Wmodel{T}
     # izquierda a derecha y 1->de derecha a izquierda.
     pline::VolatileArray{Int64,2}
 
-    #propiedades de suelos una prop en cada fila
+    #propiedades de suelos un tipo de suelo por fila
     soilprop::VolatileArray{T,2}
 
     #ángulo de inclinación del terreno en grados sexagesimales
@@ -36,17 +33,14 @@ mutable struct Wmodel{T}
     #profundidad de desplante de la cimentación del muro
     D::Real
 
+    #fuerzas del muro (peso de cada región y )
     function Wmodel(nod::VolatileArray{T,2}, elm::VolatileArray{Int64,2},
-        prop::VolatileArray{T,2},pbreak::Int64) where {T<:Real}
-        if size(prop)[1]==size(elm)[1]
+        pbreak::Int64) where {T<:Real}
             soilprop=VolatileArray(zeros(0,3));
             matprop=VolatileArray(zeros(0,3));
             pnod=VolatileArray(zeros(0,2));
             pline=VolatileArray(zeros(Int64,0,5));
-            new{T}(nod,elm,prop,pbreak,matprop,pnod,pline,soilprop,0,-1);
-        else
-            error("las alturas de elm y prop deben ser iguales")
-        end
+            new{T}(nod,elm,pbreak,matprop,pnod,pline,soilprop,0,-1);
     end
 end
 function Base.show(io::IO,x::Wmodel{<:Real})
@@ -54,13 +48,25 @@ function Base.show(io::IO,x::Wmodel{<:Real})
     print(io,"Fields:\n")
     print(io,"   nod: $(size(x.nod)[1])x$(size(x.nod)[2]) $(typeof(x.nod))\n");
     print(io,"   elm: $(size(x.elm)[1])x$(size(x.elm)[2]) $(typeof(x.elm))\n");
-    print(io,"  prop: $(size(x.prop)[1])x$(size(x.prop)[2]) $(typeof(x.prop))\n");
     print(io,"pbreak: $(x.pbreak) $(typeof(x.pbreak))");
 end
 
-function build_wall(model::Wmodel{<:Real})
-    build_wall(Array(model.nod),Array(model.elm),Array(model.prop),
+function wall_forces(model::Wmodel{T}) where {T<:Real}
+    nel=size(model.elm)[1];
+    #matriz de fuerzas
+    prop=VolatileArray(zeros(T,0),0,0);
+    prop[nel,3]=0;
+
+    #obteniendo tres primeras filas área, xm , ym
+    build_wall(Array(model.nod),Array(model.elm),Array(prop),
         model.pbreak);
+
+    #obteniendo peso y momento respecto al origen
+    for i in 1:nel
+        @inbounds prop[i,4]=prop[i,1]*model.matprop[model.elm[i,5],3];
+        @inbounds prop[i,5]=prop[i,4]*prop[i,2];
+    end
+    return prop;
 end
 
 """
@@ -105,13 +111,7 @@ function gravity_wall(;hp::Real, hz::Real, t1::Real, t2::Real, t3::Real,
     push!(elements,[1 2 3 4 1]);#cuadrilátero base (zapata)
     push!(elements,[6 7 10 9 1]);#cuadrilatero central (en pantalla)
 
-    props=VolatileArray(zeros(4,3));
-
-    #construyendo muro (obteniendo áreas y centroides)
-    #el 2 indica el índice de la fila del último elemento triangular
-    build_wall(Array(nodes),Array(elements),Array(props),2);
-
-    return Wmodel(nodes,elements,props,2);
+    return Wmodel(nodes,elements,2);
 end
 
 function add_field_row(field::VolatileArray{T,2},prop::Array{T,N}) where {
@@ -165,7 +165,7 @@ Devuelve el rango de índices correspondientes a las propiedades agregadas.
 addmat!(model::Wmodel{T},prop::Array{T,N}) where {T<:Real,N}=
     add_field_row(model.matprop,prop);
 
-function build_rankine_pline(model::Wmodel{<:Real},D::Real,alpha::Real)
+function build_rankine_pline(model::Wmodel{<:Real})
     #la línea se trazará desde la parte más baja del muro (zapata)
     #verticalmente hasta intersectar con el suelo, por defecto se considerará
     #la parte derecha como la parte posterior del muro (en contacto con el
@@ -185,15 +185,116 @@ function build_rankine_pline(model::Wmodel{<:Real},D::Real,alpha::Real)
     minix=minimum(nod[minids,1]);#x inferior izquierdo
 
     #obteniendo nudo superior de la linea de empuje activo
-    ra=deg2rad(alpha);
+    ra=deg2rad(model.alpha);
     maxdy=maxy+(mindx-maxx)*tan(ra);
 
     #obteniendo nudo superior de la linea de empuje pasivo
-    maxiy=minix+D;
+    merror="Debe ingresarse una profundidad de cimentación (campo D)"
+    model.D>0 ? maxiy=minix+model.D : error(merror);
 
     #agregando nudos
     model.pnod=VolatileArray([mindx miny;mindx maxdy;minix miny;minix maxiy]);
 
     #agregando elementos
     model.pline=VolatileArray([1 2 1 0 1;3 4 1 2 0]);
+end
+
+"""
+    build_wall(nodes::Array{T,2},
+        elm::Array{<:Integer,2},elmp::Array{T,2},
+        pbreak::Integer) where {T<:Real}
+Constructor del muro, calculará el área y el centro de gravedad de todos los
+elementos.
+*   `nodes`: matriz de nudos, cada fila de esta matriz deberá contener las
+    coordenadas `[xi yi]` de un nudo, el índice `i` de un nudo es determinado
+    por su ubicación en esta matriz.
+*   `elm`: matriz de elementos, cada fila de est matriz deberá contener los
+    índices `[id1 id2 id3 id4]` de los nudos que forman el elemento, estos
+    índices deberán ser consistentes con la matriz de nudos (`nodes`). para
+    elementos triangulares `id4=0`.
+*   `elmp`: matriz de propiedades de los elementos, está matriz deberá tener
+    al menos 3 columnas y al menos igual cantidad de filas que `elm`, por cada
+    elemento en `elm`, se rellenará la fila correspondiente con `[Ai xmi ymi]`,
+    que son el área y los componentes `x` e `y` del centro de gravedad.
+*   `pbreak`: ubicación en `elm`, del último elemento correspondiente a
+    elementos triangulares.
+
+"""
+function build_wall(nodes::Array{T,2},
+    elm::Array{<:Integer,2},elmp::Array{T,2},pbreak::Integer) where {T<:Real}
+    #número de elementos en cada matriz
+    nel=size(elm)[1];
+
+    #pbreak indica el punto donde terminan los elementos
+    #triangulares
+    if pbreak>0
+        for i in 1:pbreak
+            build_tri(nodes,elm,elmp,i);
+        end
+    end
+
+    if pbreak<nel
+        for i in pbreak+1:nel
+            buil_quad(nodes,elm,elmp,i);
+        end
+    end
+    return elmp;
+end
+
+function build_tri(nodes::Array{T,2},
+    elm::Array{<:Integer,2},elmp::Array{T,2},id::Integer) where {T<:Real}
+    #nudos (índices)
+    @inbounds n1=elm[id,1];
+    @inbounds n2=elm[id,2];
+    @inbounds n3=elm[id,3];
+
+    #nudos (coordenadas)
+    @inbounds x1=nodes[n1,1];
+    @inbounds y1=nodes[n1,2];
+    @inbounds x2=nodes[n2,1];
+    @inbounds y2=nodes[n2,2];
+    @inbounds x3=nodes[n3,1];
+    @inbounds y3=nodes[n3,2];
+
+    #baricentro
+    @inbounds elmp[id,2]=(x1+x2+x3)/3;
+    @inbounds elmp[id,3]=(y1+y2+y3)/3;
+
+    #área
+    @inbounds elmp[id,1]=(x2*y3-y2*x3-x1*y3+y1*x3+
+                    x1*y2-y1*x2)/2;
+end
+
+function buil_quad(nodes::Array{T,2},
+    elm::Array{<:Integer,2},elmp::Array{T,2},id::Integer) where {T<:Real}
+    #nudos (índices)
+    @inbounds n1=elm[id,1];
+    @inbounds n2=elm[id,2];
+    @inbounds n3=elm[id,3];
+    @inbounds n4=elm[id,4];
+
+    #nudos (coordenadas)
+    @inbounds x1=nodes[n1,1];
+    @inbounds y1=nodes[n1,2];
+    @inbounds x2=nodes[n2,1];
+    @inbounds y2=nodes[n2,2];
+    @inbounds x3=nodes[n3,1];
+    @inbounds y3=nodes[n3,2];
+    @inbounds x4=nodes[n4,1];
+    @inbounds y4=nodes[n4,2];
+
+    #áreas de los componentes triangulares
+    @inbounds A1=(x2*y3-y2*x3-x1*y3+y1*x3+
+                    x1*y2-y1*x2)/2;
+    @inbounds A2=(x3*y4-y3*x4-x1*y4+y1*x4+
+                    x1*y3-y1*x3)/2;
+    @inbounds elmp[id,1]=A1+A2;
+
+    #baricentros
+    @inbounds xm1=(x1+x2+x3)/3;
+    @inbounds ym1=(y1+y2+y3)/3;
+    @inbounds xm2=(x1+x3+x4)/3;
+    @inbounds ym2=(y1+y3+y4)/3;
+    @inbounds elmp[id,2]=(A1*xm1+A2*xm2)/elmp[id,1];
+    @inbounds elmp[id,3]=(A1*ym1+A2*ym2)/elmp[id,1];
 end

@@ -1,4 +1,4 @@
-#revisión 0.0.4 05-02-2020, 01:50 Julia1.1.0
+#revisión 0.0.5 15-02-2020, 01:00 Julia1.1.0
 import LinearAlgebra: norm
 export VolatileArray
 mutable struct VolatileArray{T,N}<:AbstractArray{T,N}
@@ -247,106 +247,6 @@ function VolatileArray(x::Array{T,2}) where {T<:Real}
     dims=size(x);
     narr=reshape(x,dims[1]*dims[2]);
     return VolatileArray(copy(narr),dims[1],dims[2]);
-end
-
-"""
-    build_wall(nodes::Array{T,2},
-        elm::Array{<:Integer,2},elmp::Array{T,2},
-        pbreak::Integer) where {T<:Real}
-Constructor del muro, calculará el área y el centro de gravedad de todos los
-elementos.
-*   `nodes`: matriz de nudos, cada fila de esta matriz deberá contener las
-    coordenadas `[xi yi]` de un nudo, el índice `i` de un nudo es determinado
-    por su ubicación en esta matriz.
-*   `elm`: matriz de elementos, cada fila de est matriz deberá contener los
-    índices `[id1 id2 id3 id4]` de los nudos que forman el elemento, estos
-    índices deberán ser consistentes con la matriz de nudos (`nodes`). para
-    elementos triangulares `id4=0`.
-*   `elmp`: matriz de propiedades de los elementos, está matriz deberá tener
-    al menos 3 columnas y al menos igual cantidad de filas que `elm`, por cada
-    elemento en `elm`, se rellenará la fila correspondiente con `[Ai xmi ymi]`,
-    que son el área y los componentes `x` e `y` del centro de gravedad.
-*   `pbreak`: ubicación en `elm`, del último elemento correspondiente a
-    elementos triangulares.
-
-"""
-function build_wall(nodes::Array{T,2},
-    elm::Array{<:Integer,2},elmp::Array{T,2},pbreak::Integer) where {T<:Real}
-    #número de elementos en cada matriz
-    nel=size(elm)[1];
-
-    #pbreak indica el punto donde terminan los elementos
-    #triangulares
-    if pbreak>0
-        for i in 1:pbreak
-            build_tri(nodes,elm,elmp,i);
-        end
-    end
-
-    if pbreak<nel
-        for i in pbreak+1:nel
-            buil_quad(nodes,elm,elmp,i);
-        end
-    end
-    return elmp;
-end
-
-function build_tri(nodes::Array{T,2},
-    elm::Array{<:Integer,2},elmp::Array{T,2},id::Integer) where {T<:Real}
-    #nudos (índices)
-    @inbounds n1=elm[id,1];
-    @inbounds n2=elm[id,2];
-    @inbounds n3=elm[id,3];
-
-    #nudos (coordenadas)
-    @inbounds x1=nodes[n1,1];
-    @inbounds y1=nodes[n1,2];
-    @inbounds x2=nodes[n2,1];
-    @inbounds y2=nodes[n2,2];
-    @inbounds x3=nodes[n3,1];
-    @inbounds y3=nodes[n3,2];
-
-    #baricentro
-    @inbounds elmp[id,2]=(x1+x2+x3)/3;
-    @inbounds elmp[id,3]=(y1+y2+y3)/3;
-
-    #área
-    @inbounds elmp[id,1]=(x2*y3-y2*x3-x1*y3+y1*x3+
-                    x1*y2-y1*x2)/2;
-end
-
-function buil_quad(nodes::Array{T,2},
-    elm::Array{<:Integer,2},elmp::Array{T,2},id::Integer) where {T<:Real}
-    #nudos (índices)
-    @inbounds n1=elm[id,1];
-    @inbounds n2=elm[id,2];
-    @inbounds n3=elm[id,3];
-    @inbounds n4=elm[id,4];
-
-    #nudos (coordenadas)
-    @inbounds x1=nodes[n1,1];
-    @inbounds y1=nodes[n1,2];
-    @inbounds x2=nodes[n2,1];
-    @inbounds y2=nodes[n2,2];
-    @inbounds x3=nodes[n3,1];
-    @inbounds y3=nodes[n3,2];
-    @inbounds x4=nodes[n4,1];
-    @inbounds y4=nodes[n4,2];
-
-    #áreas de los componentes triangulares
-    @inbounds A1=(x2*y3-y2*x3-x1*y3+y1*x3+
-                    x1*y2-y1*x2)/2;
-    @inbounds A2=(x3*y4-y3*x4-x1*y4+y1*x4+
-                    x1*y3-y1*x3)/2;
-    @inbounds elmp[id,1]=A1+A2;
-
-    #baricentros
-    @inbounds xm1=(x1+x2+x3)/3;
-    @inbounds ym1=(y1+y2+y3)/3;
-    @inbounds xm2=(x1+x3+x4)/3;
-    @inbounds ym2=(y1+y3+y4)/3;
-    @inbounds elmp[id,2]=(A1*xm1+A2*xm2)/elmp[id,1];
-    @inbounds elmp[id,3]=(A1*ym1+A2*ym2)/elmp[id,1];
 end
 
 """
