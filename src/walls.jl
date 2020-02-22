@@ -1,5 +1,5 @@
-#revisión 0.0.6 15-02-2020, 01:00 Julia1.1.0
-export Wmodel, gravity_wall,addsoil!, addmat!
+#revisión 0.0.7 22-02-2020, 01:10 Julia1.1.0
+export Wmodel, gravity_wall,addsoil!, addmat!,wall_forces
 mutable struct Wmodel{T}
     #nudos para el muro
     nod::VolatileArray{T,2}
@@ -17,12 +17,15 @@ mutable struct Wmodel{T}
     #nudos especiales para la línea de presiones
     pnod::VolatileArray{T,2}
 
-    #linea de presiones, se forman con los nudos en pnod una
+    #* linea de presiones, se forman con los nudos en pnod una
     #fila->[n1 n2 prop type side]; n1, n2 índices de nudos en pnod; prop el
     #índice de la propiedad de suelo en soilprop; type: 0->presión activa,
     #1->presión en reposo y 2->presión pasiva; side 0-> la presión actua de
     # izquierda a derecha y 1->de derecha a izquierda.
-    pline::VolatileArray{Int64,2}
+    #* pliners: linea a la derecha del muro
+    #* plinels: linea a la izquierda del muro
+    pliners::VolatileArray{Int64,2}
+    plinels::VolatileArray{Int64,2}
 
     #propiedades de suelos un tipo de suelo por fila
     soilprop::VolatileArray{T,2}
@@ -39,8 +42,9 @@ mutable struct Wmodel{T}
             soilprop=VolatileArray(zeros(0,3));
             matprop=VolatileArray(zeros(0,3));
             pnod=VolatileArray(zeros(0,2));
-            pline=VolatileArray(zeros(Int64,0,5));
-            new{T}(nod,elm,pbreak,matprop,pnod,pline,soilprop,0,-1);
+            pliners=VolatileArray(zeros(Int64,0,5));
+            plinels=VolatileArray(zeros(Int64,0,5));
+            new{T}(nod,elm,pbreak,matprop,pnod,pliners,plinels,soilprop,0,-1);
     end
 end
 function Base.show(io::IO,x::Wmodel{<:Real})
@@ -196,7 +200,8 @@ function build_rankine_pline(model::Wmodel{<:Real})
     model.pnod=VolatileArray([mindx miny;mindx maxdy;minix miny;minix maxiy]);
 
     #agregando elementos
-    model.pline=VolatileArray([1 2 1 0 1;3 4 1 2 0]);
+    model.plinels=VolatileArray([3 4 1 2 0]);
+    model.pliners=VolatileArray([1 2 1 0 1]);
 end
 
 """
@@ -297,4 +302,8 @@ function buil_quad(nodes::Array{T,2},
     @inbounds ym2=(y1+y3+y4)/3;
     @inbounds elmp[id,2]=(A1*xm1+A2*xm2)/elmp[id,1];
     @inbounds elmp[id,3]=(A1*ym1+A2*ym2)/elmp[id,1];
+end
+
+function soil_forces_rs(model::Wmodel{<:Real})
+
 end
