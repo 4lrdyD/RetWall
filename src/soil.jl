@@ -1,8 +1,8 @@
-#revisión 0.0.0 01-02-2020, 01:40 Julia1.1.0
+#revisión 0.0.1 23-02-2020, 02:00 Julia1.1.0
 """
     ka_rankine(fi::Real,alpha::Real)
 Calcula el coeficiente de presión activa de Rankine para un
-suelo granular `(c'=0)`, siendo:
+suelo granular `(c'=0)` y pared vertical, siendo:
 *   `fi`: el ángulo de fricción por esfuerzo efectivo
      en grados sexagesimales.
 *   `alpha`: el ángulo en grados sexagesimales que forma el
@@ -28,7 +28,7 @@ end
 
 """
     ka_rankine(fi::Real,alpha::Real,c::Real,gamma::Real,z::Real)
-Calcula el coeficiente de presión activa de Rankine, siendo:
+Calcula el coeficiente de presión activa de Rankine (pared vertical), siendo:
 *   `fi`: el ángulo de fricción por esfuerzo efectivo
      en grados sexagesimales.
 *   `alpha`: el ángulo en grados sexagesimales que forma el

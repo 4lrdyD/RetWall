@@ -1,4 +1,4 @@
-#revisión 0.0.7 22-02-2020, 01:10 Julia1.1.0
+#revisión 0.0.8 23-02-2020, 02:00 Julia1.1.0
 export Wmodel, gravity_wall,addsoil!, addmat!,wall_forces
 mutable struct Wmodel{T}
     #nudos para el muro
@@ -200,8 +200,8 @@ function build_rankine_pline(model::Wmodel{<:Real})
     model.pnod=VolatileArray([mindx miny;mindx maxdy;minix miny;minix maxiy]);
 
     #agregando elementos
-    model.plinels=VolatileArray([3 4 1 2 0]);
-    model.pliners=VolatileArray([1 2 1 0 1]);
+    model.plinels=VolatileArray([4 3 1 2 0]);
+    model.pliners=VolatileArray([2 1 1 0 1]);
 end
 
 """
@@ -304,6 +304,35 @@ function buil_quad(nodes::Array{T,2},
     @inbounds elmp[id,3]=(A1*ym1+A2*ym2)/elmp[id,1];
 end
 
-function soil_forces_rs(model::Wmodel{<:Real})
-
+function soil_rankine_forces_rs(model::Wmodel{<:Real})
+    nel=size(model.pliners)[1];
+    qload=0.0;
+    for i in 1:nel
+        #coordenadas de los nudos
+        n1=model.pliners[i,1];
+        n2=model.pliners[i,2];
+        xu=model.pnod[n1,1];
+        yu=model.pnod[n1,2];
+        err="Las coordenadas en y no son consistentes con el estrato anterior";
+        if i!=1
+            if yu!=yd#validación necesaria de las coordenadas en y
+                error(err);
+            end
+        end
+        xd=model.pnod[n2,1];
+        yd=model.pnod[n2,2];
+        #obteniendo la altura del estrato y validando el valor
+        h=yu-yd;
+        err="la línea resultante para aplicar la teoría de presión de tierra "
+        err1="de Rankine, debe ser vertical y positiva en todos los estratos"
+        if h<=0 || xu-xd!=0
+            error(err*err1);
+        end
+        #obteniendo propiedades
+        pid=model.pliners[i,3];
+        fi=model.soilprop[pid,1];
+        c=model.soilprop[pid,2];
+        gamma=model.soilprop[pid,3];
+        #!!!incompleto!!!!
+    end
 end
