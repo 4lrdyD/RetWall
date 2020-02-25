@@ -1,4 +1,4 @@
-#revisión 0.0.8 23-02-2020, 02:00 Julia1.1.0
+#revisión 0.0.9 24-02-2020, 22:15 Julia1.1.0
 export Wmodel, gravity_wall,addsoil!, addmat!,wall_forces
 mutable struct Wmodel{T}
     #nudos para el muro
@@ -306,6 +306,13 @@ end
 
 function soil_rankine_forces_rs(model::Wmodel{<:Real})
     nel=size(model.pliners)[1];
+    #declarando el objeto de salida
+    #será una matriz de nelx4, por cada fila los datos serán
+    #fuerza en la dirección horizontal, fuerza en la dirección vertical,
+    #brazo horizontal y brazo vertical; inicialmente la matriz será vacia (0x0)
+    #los elementos se irán ingresando según se calculen los valores
+    #correspondientes.
+    out=VolatileArray(zeros(0,0));
     qload=0.0;
     for i in 1:nel
         #coordenadas de los nudos
@@ -333,6 +340,29 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real})
         fi=model.soilprop[pid,1];
         c=model.soilprop[pid,2];
         gamma=model.soilprop[pid,3];
-        #!!!incompleto!!!!
+        #la utilización de suelo con cohesión solo será permitida para el
+        #primer estrato (por ahora)
+        fr=deg2rad(fi);
+        ar=deg2rad(model.alpha);
+        if i==1 && c!=0
+            #profundidad de la grieta de tensión
+            zc=2*c*sqrt((1+sin(fr))/(1-sin(fr)))/gamma;
+            ka=ka_rankine(fi,model.alpha,c,gamma,h);
+        else
+            if c!=0
+                err="Por ahora, la cohesión solo es permitida para el primer "
+                err1="estrato, se ingnorará la cohesión en los demás estratos."
+                print(err*err1);
+            end
+            ka=ka_rankine(fi,model.alpha);
+            pa=0.5*gamma*ka*h^2;
+            paq=ka*h*qload/cos(ar);
+            pat=pa+paq;
+            qload+=gamma*h;
+            out[i,1]=pa*cos(ar);#fuerza horizontal
+            out[i,2]=pa*sin(ar);#fuerza vertical
+            out[i,3]=xu;#razo horizontal
+            out[i,4]=yd+(pa*h/3+paq*h/2)/pat;#brazo vertical
+        end
     end
 end
