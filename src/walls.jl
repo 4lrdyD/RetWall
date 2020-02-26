@@ -1,5 +1,6 @@
-#revisión 0.0.9 24-02-2020, 22:15 Julia1.1.0
-export Wmodel, gravity_wall,addsoil!, addmat!,wall_forces
+#revisión 0.1.0 25-02-2020, 22:05 Julia1.1.0
+export Wmodel, gravity_wall,addsoil!, addmat!,wall_forces,
+        soil_rankine_forces_rs
 mutable struct Wmodel{T}
     #nudos para el muro
     nod::VolatileArray{T,2}
@@ -313,14 +314,18 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real})
     #los elementos se irán ingresando según se calculen los valores
     #correspondientes.
     out=VolatileArray(zeros(0,0));
-    qload=0.0;
+    qload=0.0;#para un estrato inferior, los estratos superiores actuarán como
+              #carga distribuida sobre este.
+
+    #declarando yd;
+    yd=0.0;
     for i in 1:nel
         #coordenadas de los nudos
         n1=model.pliners[i,1];
         n2=model.pliners[i,2];
         xu=model.pnod[n1,1];
         yu=model.pnod[n1,2];
-        err="Las coordenadas en y no son consistentes con el estrato anterior";
+        err="Las coordenadas en `y` no son consistentes con el estrato anterior";
         if i!=1
             if yu!=yd#validación necesaria de las coordenadas en y
                 error(err);
@@ -332,7 +337,7 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real})
         h=yu-yd;
         err="la línea resultante para aplicar la teoría de presión de tierra "
         err1="de Rankine, debe ser vertical y positiva en todos los estratos"
-        if h<=0 || xu-xd!=0
+        if h<=0 || xu-xd>1e6
             error(err*err1);
         end
         #obteniendo propiedades
@@ -348,6 +353,12 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real})
             #profundidad de la grieta de tensión
             zc=2*c*sqrt((1+sin(fr))/(1-sin(fr)))/gamma;
             ka=ka_rankine(fi,model.alpha,c,gamma,h);
+            hc=h-zc;
+            pa=0.5*gamma*ka*hc^2;
+            out[i,1]=pa*cos(ar);#fuerza horizontal
+            out[i,2]=pa*sin(ar);#fuerza vertical
+            out[i,3]=xu;#razo horizontal
+            out[i,4]=yd+hc/3;#brazo vertical
         else
             if c!=0
                 err="Por ahora, la cohesión solo es permitida para el primer "
@@ -358,11 +369,86 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real})
             pa=0.5*gamma*ka*h^2;
             paq=ka*h*qload/cos(ar);
             pat=pa+paq;
-            qload+=gamma*h;
-            out[i,1]=pa*cos(ar);#fuerza horizontal
-            out[i,2]=pa*sin(ar);#fuerza vertical
+            out[i,1]=pat*cos(ar);#fuerza horizontal
+            out[i,2]=pat*sin(ar);#fuerza vertical
             out[i,3]=xu;#razo horizontal
             out[i,4]=yd+(pa*h/3+paq*h/2)/pat;#brazo vertical
         end
+        qload+=gamma*h;
     end
+    return out;
+end
+
+function soil_rankine_forces_ls(model::Wmodel{<:Real})
+    nel=size(model.plinels)[1];
+    #declarando el objeto de salida
+    #será una matriz de nelx4, por cada fila los datos serán
+    #fuerza en la dirección horizontal, fuerza en la dirección vertical,
+    #brazo horizontal y brazo vertical; inicialmente la matriz será vacia (0x0)
+    #los elementos se irán ingresando según se calculen los valores
+    #correspondientes.
+    out=VolatileArray(zeros(0,0));
+    qload=0.0;#para un estrato inferior, los estratos superiores actuarán como
+              #carga distribuida sobre este.
+
+    #declarando yd;
+    yd=0.0;
+    for i in 1:nel
+        #coordenadas de los nudos
+        n1=model.plinels[i,1];
+        n2=model.plinels[i,2];
+        xu=model.pnod[n1,1];
+        yu=model.pnod[n1,2];
+        err="Las coordenadas en `y` no son consistentes con el estrato anterior";
+        if i!=1
+            if yu!=yd#validación necesaria de las coordenadas en y
+                error(err);
+            end
+        end
+        xd=model.pnod[n2,1];
+        yd=model.pnod[n2,2];
+        #obteniendo la altura del estrato y validando el valor
+        h=yu-yd;
+        err="la línea resultante para aplicar la teoría de presión de tierra "
+        err1="de Rankine, debe ser vertical y positiva en todos los estratos"
+        if h<=0 || xu-xd>1e6
+            error(err*err1);
+        end
+        #obteniendo propiedades
+        pid=model.plinels[i,3];
+        fi=model.soilprop[pid,1];
+        c=model.soilprop[pid,2];
+        gamma=model.soilprop[pid,3];
+        #la utilización de suelo con cohesión solo será permitida para el
+        #primer estrato (por ahora)
+        fr=deg2rad(fi);
+        ar=deg2rad(0.0);#inclinación del terreno 0
+        if i==1 && c!=0
+            #profundidad de la grieta de tensión
+            zc=2*c*sqrt((1+sin(fr))/(1-sin(fr)))/gamma;
+            ka=ka_rankine(fi,model.alpha,c,gamma,h);
+            hc=h-zc;
+            pa=0.5*gamma*ka*hc^2;
+            out[i,1]=pa*cos(ar);#fuerza horizontal
+            out[i,2]=pa*sin(ar);#fuerza vertical
+            out[i,3]=xu;#razo horizontal
+            out[i,4]=yd+hc/3;#brazo vertical
+        else
+            if c!=0
+                err="Por ahora, la cohesión solo es permitida para el primer "
+                err1="estrato, se ingnorará la cohesión en los demás estratos."
+                print(err*err1);
+            end
+            ka=ka_rankine(fi,model.alpha);
+            pa=0.5*gamma*ka*h^2;
+            paq=ka*h*qload/cos(ar);
+            pat=pa+paq;
+            out[i,1]=pat*cos(ar);#fuerza horizontal
+            out[i,2]=pat*sin(ar);#fuerza vertical
+            out[i,3]=xu;#razo horizontal
+            out[i,4]=yd+(pa*h/3+paq*h/2)/pat;#brazo vertical
+        end
+        qload+=gamma*h;
+    end
+    return out;
 end

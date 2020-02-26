@@ -1,4 +1,4 @@
-#revisión 0.0.1 23-02-2020, 02:00 Julia1.1.0
+#revisión 0.0.2 25-02-2020, 22:05 Julia1.1.0
 """
     ka_rankine(fi::Real,alpha::Real)
 Calcula el coeficiente de presión activa de Rankine para un
@@ -115,3 +115,72 @@ Calcula el coeficiente de presión en reposo de Schmertmann,
 *   `OCR`: relación de sobreconsolidación.
 """
 kr_sch(OCR::Real)=0.5*OCR^0.5;
+
+"""
+    kp_rankine(fi::Real,alpha::Real)
+Calcula el coeficiente de presión pasiva de Rankine para un
+suelo granular `(c'=0)` y pared vertical, siendo:
+*   `fi`: el ángulo de fricción por esfuerzo efectivo
+     en grados sexagesimales.
+*   `alpha`: el ángulo en grados sexagesimales que forma el
+    terreno con la horizontal.
+
+"""
+function kp_rankine(fi::Real,alpha::Real)
+    #validando argumentos
+    if fi<0 || alpha<0
+        error("los argumentos deben ser no negativos");
+    end
+    #convirtiendo los ángulos a radianes
+    ar=deg2rad(alpha);
+    fr=deg2rad(fi);
+    #calculando los cosenos
+    car=cos(ar);
+    cfr=cos(fr);
+
+    #ver Fundamentos de ingeniería de cimentaciones, Braja M.Das,
+    #Cap. 7, numeral 7.11. Presión pasiva de tierra de Rankine:
+    #Cara posterior vertical y relleno inclinado
+    return car*(car+sqrt(car^2-cfr^2))/(car-sqrt(car^2-cfr^2));
+end
+
+"""
+    kp_rankine(fi::Real,alpha::Real,c::Real,gamma::Real,z::Real)
+Calcula el coeficiente de presión pasiva de Rankine (pared vertical), siendo:
+*   `fi`: el ángulo de fricción por esfuerzo efectivo
+     en grados sexagesimales.
+*   `alpha`: el ángulo en grados sexagesimales que forma el
+    terreno con la horizontal.
+*   `c`: resistencia no drenada o cohesión aparente (KPa).
+*   `gamma`: peso unitario del suelo (KN/m3).
+*   `z`: profundidad a la que se calcula el coeficiente.
+
+"""
+function kp_rankine(fi::Real,alpha::Real,c::Real,
+    gamma::Real,z::Real)
+    #validando argumentos
+    if fi<0 || alpha<0 || c<0 || gamma<=0 #|| z<=0
+        err1="los argumentos deben ser no negativos,"
+        err2=" el peso unitario y la profundidad"
+        err3=" deben ser positivos"
+        error(err1*err2*err3);
+    end
+
+    #convirtiendo los ángulos a radianes
+    ar=deg2rad(alpha);
+    fr=deg2rad(fi);
+
+    #calculando los senos y cosenos
+    car=cos(ar);
+    cfr=cos(fr);
+    sfr=sin(fr);
+
+    #relación c/(gamma*z)
+    rel=c/(gamma*z);
+
+    #ver Fundamentos de ingeniería de cimentaciones, Braja M.Das,
+    #Cap. 7, numeral 7.11. Presión pasiva de tierra de Rankine:
+    #Cara posterior vertical y relleno inclinado
+    return ((2*car^2+2*rel*cfr*sfr+sqrt(4*car^2*(car^2-cfr^2)+
+        4*rel^2*cfr^2+8*rel*car^2*sfr*cfr))/(cfr^2)-1)*car;
+end
