@@ -1,6 +1,6 @@
-#revisión 0.1.0 25-02-2020, 22:05 Julia1.1.0
+#revisión 0.1.1 26-02-2020, 22:50 Julia1.1.0
 export Wmodel, gravity_wall,addsoil!, addmat!,wall_forces,
-        soil_rankine_forces_rs
+        soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1
 mutable struct Wmodel{T}
     #nudos para el muro
     nod::VolatileArray{T,2}
@@ -359,6 +359,8 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real})
             out[i,2]=pa*sin(ar);#fuerza vertical
             out[i,3]=xu;#razo horizontal
             out[i,4]=yd+hc/3;#brazo vertical
+            out[i,5]=out[i,1]*out[i,4];#momento de la fuerza horizontal
+            out[i,6]=out[i,2]*out[i,3];#momento de la fuerza vertical
         else
             if c!=0
                 err="Por ahora, la cohesión solo es permitida para el primer "
@@ -371,8 +373,10 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real})
             pat=pa+paq;
             out[i,1]=pat*cos(ar);#fuerza horizontal
             out[i,2]=pat*sin(ar);#fuerza vertical
-            out[i,3]=xu;#razo horizontal
+            out[i,3]=xu;#brazo horizontal
             out[i,4]=yd+(pa*h/3+paq*h/2)/pat;#brazo vertical
+            out[i,5]=out[i,1]*out[i,4];#momento de la fuerza horizontal
+            out[i,6]=out[i,2]*out[i,3];#momento de la fuerza vertical
         end
         qload+=gamma*h;
     end
@@ -382,9 +386,11 @@ end
 function soil_rankine_forces_ls(model::Wmodel{<:Real})
     nel=size(model.plinels)[1];
     #declarando el objeto de salida
-    #será una matriz de nelx4, por cada fila los datos serán
+    #será una matriz de nelx6, por cada fila los datos serán
     #fuerza en la dirección horizontal, fuerza en la dirección vertical,
-    #brazo horizontal y brazo vertical; inicialmente la matriz será vacia (0x0)
+    #brazo horizontal, brazo vertical, Momento producido por la fuerza
+    #horizontal y momento producido por la fuerza vertical; inicialmente
+    #la matriz será vacia (0x0)
     #los elementos se irán ingresando según se calculen los valores
     #correspondientes.
     out=VolatileArray(zeros(0,0));
@@ -422,33 +428,118 @@ function soil_rankine_forces_ls(model::Wmodel{<:Real})
         #la utilización de suelo con cohesión solo será permitida para el
         #primer estrato (por ahora)
         fr=deg2rad(fi);
-        ar=deg2rad(0.0);#inclinación del terreno 0
         if i==1 && c!=0
-            #profundidad de la grieta de tensión
-            zc=2*c*sqrt((1+sin(fr))/(1-sin(fr)))/gamma;
-            ka=ka_rankine(fi,model.alpha,c,gamma,h);
-            hc=h-zc;
-            pa=0.5*gamma*ka*hc^2;
-            out[i,1]=pa*cos(ar);#fuerza horizontal
-            out[i,2]=pa*sin(ar);#fuerza vertical
-            out[i,3]=xu;#razo horizontal
-            out[i,4]=yd+hc/3;#brazo vertical
+            #calculando presión en la parte superior
+            #la función para el coeficiente de presión no admite z=0, por tanto
+            #reemplazamos z=1e-6 para obtener el valor aproximado en la parte
+            #superior.
+            pu=1e-6*gamma*kp_rankine(fi,0,c,gamma,1e-6);
+            #presión en la parte inferior z=h
+            pd=h*gamma*kp_rankine(fi,0,c,gamma,h);
+            #pu y pd determinan un trapecio del cual tenemos que obtener el área
+            #y el brazo vertical área=fuerza
+            pp=(pu+pd)*h/2;
+            out[i,1]=pp;#fuerza horizontal
+            out[i,3]=xu;#brazo horizontal
+            out[i,4]=((pu*h)*h/2+(0.5*(pd-pu)*h)*h/3)/pp;#brazo vertical
+            out[i,5]=pp*out[i,4];#momento de la fuerza horizontal
+            out[i,6]=0;
         else
             if c!=0
                 err="Por ahora, la cohesión solo es permitida para el primer "
                 err1="estrato, se ingnorará la cohesión en los demás estratos."
                 print(err*err1);
             end
-            ka=ka_rankine(fi,model.alpha);
-            pa=0.5*gamma*ka*h^2;
-            paq=ka*h*qload/cos(ar);
-            pat=pa+paq;
-            out[i,1]=pat*cos(ar);#fuerza horizontal
-            out[i,2]=pat*sin(ar);#fuerza vertical
-            out[i,3]=xu;#razo horizontal
-            out[i,4]=yd+(pa*h/3+paq*h/2)/pat;#brazo vertical
+            kp=kp_rankine(fi,0);
+            pp=0.5*gamma*kp*h^2;
+            ppq=kp*h*qload;
+            ppt=pp+ppq;
+            out[i,1]=ppt;#fuerza horizontal
+            out[i,3]=xu;#brazo horizontal
+            out[i,4]=yd+(pp*h/3+ppq*h/2)/ppt;#brazo vertical
+            out[i,5]=ppt*out[i,4];#momento de la fuerza horizontal
+            out[i,6]=0;
         end
         qload+=gamma*h;
     end
+    return out;
+end
+
+"""
+    check_stab_wt1(model::Wmodel{<:Real},wforces::VolatileArray{<:Real,2},
+        rsf::VolatileArray{<:Real,2},lsf::VolatileArray{<:Real,2};k1::Real=2/3,
+        k2::Real=2/3)
+Chequeo de la estabilidad de un muro, para un muro típico, de preferencia
+creado con `gravity_wall`, retornará un array de tamaño 5, con los siguientes
+datos en ése orden: factor de seguridad contra el volteo, factor de seguridad
+contra el deslizamiento, excentricidad, carga al pie del muro y carga en el
+talón del muro.
+
+    * `wforces`: Fuerzas generadas por el muro, creada con `wall_forces`.
+    * `rsf`: Fuerzas generadas por el terreno a la derecha del muro, creada con
+    `soil_rankine_forces_rs`.
+    * `lsf`: Fuerzas generadas por el terreno a la izquierda del muro, creada
+    con `soil_rankine_forces_ls`.
+    *`k1` y `k2`: argumentos opcionales, fatores que afectarán al ángulo de
+    fricción y la cohesión respectivamente para determinar la seguridad contra
+    deslizamiento.
+Las propiedades de suelo consideradas para calcular el factor de seguridad
+contra el deslizamiento, se obtendrán del último estrato considerado de suelo
+a la izquierda del muro.
+
+"""
+function check_stab_wt1(model::Wmodel{<:Real},wforces::VolatileArray{<:Real,2},
+    rsf::VolatileArray{<:Real,2},lsf::VolatileArray{<:Real,2};k1::Real=2/3,
+    k2::Real=2/3)
+    #formación de salida
+    out=VolatileArray(zeros(0,0));
+
+    #*calculando factor de seguridad contra el volteo
+    #wforces contiene en su quinta columna, lo momentos resistentes generados
+    #por el peso del muro.
+    Mr=sum(wforces[:,5]);
+    #adicionalmente los momentos resistentes generados por el suelo, se
+    #encuentran en la 6ta columna de rsf y 5ta columna de lsf
+    Mr+=sum(rsf[:,6]);
+    Mr+=sum(lsf[:,5]);
+    #los momentos actuantes se encutran en la 5ta columna de rsf y 6ta columna
+    #de lsf
+    Ma=sum(rsf[:,5]);
+    Ma+=sum(lsf[:,6]);
+    #escribiendo factor de seguridad contra el volteo
+    out[1,1]=Mr/Ma;
+
+    #*calculando factor de seguridad contra el deslizamiento
+    #wforces contiene en su cuarta columna, las fuerzas verticales generados
+    #(peso del muro).
+    vf=sum(wforces[:,4]);
+    #adicionalmente las fuerzas verticales generadas por el empuje del suelo, se
+    #encuentran en la 2da columna de rsf de lsf
+    vf+=sum(rsf[:,2]);
+    vf+=sum(lsf[:,2]);
+    #obteniendo las propiedas de suelo
+    #obteniendo el último estrato del campo plinels
+    id=model.plinels[end,3];
+    fi=model.soilprop[id,1];
+    c=model.soilprop[id,2];
+    #modificando
+    fi=deg2rad(k1*fi);
+    c=k2*c;
+    #el empuje pasivo (resistente), primera columna de lsf
+    pp=sum(lsf[:,1]);
+    #empuje activo (actuante), primera columna de rsf
+    pa=sum(rsf[:,1]);
+    #longitud de la base del muro, maximo valor de x, en la matriz de nudos
+    B=maximum(model.nod[:,1]);
+    #escribiendo factor de seguridad contra el deslizamiento
+    out[1,2]=(vf*tan(fi)+B*c+pp)/pa;
+
+    #excentricidad
+    ex=B/2-(Mr-Ma)/vf;
+    out[1,3]=ex;
+
+    #qpie y q talón
+    out[1,4]=vf*(1+6*ex/B)/B;
+    out[1,5]=vf*(1-6*ex/B)/B;
     return out;
 end
