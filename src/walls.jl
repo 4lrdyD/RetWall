@@ -1,6 +1,7 @@
-#revisión 0.1.1 26-02-2020, 22:50 Julia1.1.0
+#revisión 0.1.2 27-02-2020, 23:10 Julia1.1.0
 export Wmodel, gravity_wall,addsoil!, addmat!,wall_forces,
-        soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1
+        soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1,
+        uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces
 mutable struct Wmodel{T}
     #nudos para el muro
     nod::VolatileArray{T,2}
@@ -37,7 +38,6 @@ mutable struct Wmodel{T}
     #profundidad de desplante de la cimentación del muro
     D::Real
 
-    #fuerzas del muro (peso de cada región y )
     function Wmodel(nod::VolatileArray{T,2}, elm::VolatileArray{Int64,2},
         pbreak::Int64) where {T<:Real}
             soilprop=VolatileArray(zeros(0,3));
@@ -308,9 +308,11 @@ end
 function soil_rankine_forces_rs(model::Wmodel{<:Real})
     nel=size(model.pliners)[1];
     #declarando el objeto de salida
-    #será una matriz de nelx4, por cada fila los datos serán
+    #será una matriz de nelx6, por cada fila los datos serán
     #fuerza en la dirección horizontal, fuerza en la dirección vertical,
-    #brazo horizontal y brazo vertical; inicialmente la matriz será vacia (0x0)
+    #brazo horizontal, brazo vertical, Momento producido por la fuerza
+    #horizontal y momento producido por la fuerza vertical
+    #Inicialmente la matriz será vacia (0x0)
     #los elementos se irán ingresando según se calculen los valores
     #correspondientes.
     out=VolatileArray(zeros(0,0));
@@ -388,9 +390,9 @@ function soil_rankine_forces_ls(model::Wmodel{<:Real})
     #declarando el objeto de salida
     #será una matriz de nelx6, por cada fila los datos serán
     #fuerza en la dirección horizontal, fuerza en la dirección vertical,
-    #brazo horizontal, brazo vertical, Momento producido por la fuerza
-    #horizontal y momento producido por la fuerza vertical; inicialmente
-    #la matriz será vacia (0x0)
+    #brazo horizontal, brazo vertical, momento producido por la fuerza
+    #horizontal y el momento producido por la fuerza vertical
+    #Inicialmente la matriz será vacia (0x0)
     #los elementos se irán ingresando según se calculen los valores
     #correspondientes.
     out=VolatileArray(zeros(0,0));
@@ -443,7 +445,7 @@ function soil_rankine_forces_ls(model::Wmodel{<:Real})
             out[i,3]=xu;#brazo horizontal
             out[i,4]=((pu*h)*h/2+(0.5*(pd-pu)*h)*h/3)/pp;#brazo vertical
             out[i,5]=pp*out[i,4];#momento de la fuerza horizontal
-            out[i,6]=0;
+            out[i,6]=0.0;
         else
             if c!=0
                 err="Por ahora, la cohesión solo es permitida para el primer "
@@ -458,16 +460,88 @@ function soil_rankine_forces_ls(model::Wmodel{<:Real})
             out[i,3]=xu;#brazo horizontal
             out[i,4]=yd+(pp*h/3+ppq*h/2)/ppt;#brazo vertical
             out[i,5]=ppt*out[i,4];#momento de la fuerza horizontal
-            out[i,6]=0;
+            out[i,6]=0.0;
         end
         qload+=gamma*h;
     end
     return out;
 end
 
+function uload_rankine_forces_rs(model::Wmodel{<:Real},uload::Real)
+    nel=size(model.pliners)[1];
+    #declarando el objeto de salida
+    #será una matriz de nelx6, por cada fila los datos serán
+    #fuerza en la dirección horizontal, fuerza en la dirección vertical,
+    #brazo horizontal, brazo vertical, Momento producido por la fuerza
+    #horizontal y momento producido por la fuerza vertical.
+    #Inicialmente la matriz será vacia (0x0)
+    #los elementos se irán ingresando según se calculen los valores
+    #correspondientes.
+    out=VolatileArray(zeros(0,0));
+
+    #declarando yd;
+    yd=0.0;
+    for i in 1:nel
+        #coordenadas de los nudos
+        n1=model.pliners[i,1];
+        n2=model.pliners[i,2];
+        xu=model.pnod[n1,1];
+        yu=model.pnod[n1,2];
+        err="Las coordenadas en `y` no son consistentes con el estrato anterior";
+        if i!=1
+            if yu!=yd#validación necesaria de las coordenadas en y
+                error(err);
+            end
+        end
+        xd=model.pnod[n2,1];
+        yd=model.pnod[n2,2];
+        #obteniendo la altura del estrato y validando el valor
+        h=yu-yd;
+        err="la línea resultante para aplicar la teoría de presión de tierra "
+        err1="de Rankine, debe ser vertical y positiva en todos los estratos"
+        if h<=0 || xu-xd>1e6
+            error(err*err1);
+        end
+        #obteniendo propiedades
+        pid=model.pliners[i,3];
+        fi=model.soilprop[pid,1];
+        c=model.soilprop[pid,2];
+        gamma=model.soilprop[pid,3];
+        #la utilización de suelo con cohesión solo será permitida para el
+        #primer estrato (por ahora)
+        fr=deg2rad(fi);
+        ar=deg2rad(model.alpha);
+        if i==1 && c!=0
+            ka=ka_rankine(fi,model.alpha,c,gamma,h);
+            pax=ka*h*uload;#horizontal
+            pay=pax*tan(ar);#vertical
+            out[i,1]=pax;#fuerza horizontal
+            out[i,2]=pay;#fuerza vertical
+        else
+            if c!=0
+                err="Por ahora, la cohesión solo es permitida para el primer "
+                err1="estrato, se ingnorará la cohesión en los demás estratos."
+                print(err*err1);
+            end
+            ka=ka_rankine(fi,model.alpha);
+            pax=ka*h*uload;#horizontal
+            pay=pax*tan(ar);#vertical
+            out[i,1]=pax;#fuerza horizontal
+            out[i,2]=pay;#fuerza vertical
+        end
+        out[i,3]=xu;#brazo horizontal
+        out[i,4]=yd+h/2;#brazo vertical
+        out[i,5]=out[i,1]*out[i,4];#momento de la fuerza horizontal
+        out[i,6]=out[i,2]*out[i,3];#momento de la fuerza vertical
+    end
+    return out;
+end
+
 """
     check_stab_wt1(model::Wmodel{<:Real},wforces::VolatileArray{<:Real,2},
-        rsf::VolatileArray{<:Real,2},lsf::VolatileArray{<:Real,2};k1::Real=2/3,
+        rsf::VolatileArray{<:Real,2},lsf::VolatileArray{<:Real,2};
+        arsf::VolatileArray{<:Real,2}=VolatileArray(zeros(0,6)),
+        alsf::VolatileArray{<:Real,2}=VolatileArray(zeros(0,6)),k1::Real=2/3,
         k2::Real=2/3)
 Chequeo de la estabilidad de un muro, para un muro típico, de preferencia
 creado con `gravity_wall`, retornará un array de tamaño 5, con los siguientes
@@ -480,6 +554,8 @@ talón del muro.
     `soil_rankine_forces_rs`.
     * `lsf`: Fuerzas generadas por el terreno a la izquierda del muro, creada
     con `soil_rankine_forces_ls`.
+    * `arsf` y `alsf`: argumentos opcionales, Fuerzas adicionales análogas a
+    `rsf` y `lsf`.
     *`k1` y `k2`: argumentos opcionales, fatores que afectarán al ángulo de
     fricción y la cohesión respectivamente para determinar la seguridad contra
     deslizamiento.
@@ -489,7 +565,9 @@ a la izquierda del muro.
 
 """
 function check_stab_wt1(model::Wmodel{<:Real},wforces::VolatileArray{<:Real,2},
-    rsf::VolatileArray{<:Real,2},lsf::VolatileArray{<:Real,2};k1::Real=2/3,
+    rsf::VolatileArray{<:Real,2},lsf::VolatileArray{<:Real,2};
+    arsf::VolatileArray{<:Real,2}=VolatileArray(zeros(0,6)),
+    alsf::VolatileArray{<:Real,2}=VolatileArray(zeros(0,6)),k1::Real=2/3,
     k2::Real=2/3)
     #formación de salida
     out=VolatileArray(zeros(0,0));
@@ -502,10 +580,14 @@ function check_stab_wt1(model::Wmodel{<:Real},wforces::VolatileArray{<:Real,2},
     #encuentran en la 6ta columna de rsf y 5ta columna de lsf
     Mr+=sum(rsf[:,6]);
     Mr+=sum(lsf[:,5]);
-    #los momentos actuantes se encutran en la 5ta columna de rsf y 6ta columna
+    Mr+=sum(arsf[:,6]);
+    Mr+=sum(alsf[:,5]);
+    #los momentos actuantes se encuetran en la 5ta columna de rsf y 6ta columna
     #de lsf
     Ma=sum(rsf[:,5]);
     Ma+=sum(lsf[:,6]);
+    Ma+=sum(arsf[:,5]);
+    Ma+=sum(alsf[:,6]);
     #escribiendo factor de seguridad contra el volteo
     out[1,1]=Mr/Ma;
 
@@ -514,9 +596,11 @@ function check_stab_wt1(model::Wmodel{<:Real},wforces::VolatileArray{<:Real,2},
     #(peso del muro).
     vf=sum(wforces[:,4]);
     #adicionalmente las fuerzas verticales generadas por el empuje del suelo, se
-    #encuentran en la 2da columna de rsf de lsf
+    #encuentran en la 2da columna de rsf y de lsf
     vf+=sum(rsf[:,2]);
     vf+=sum(lsf[:,2]);
+    vf+=sum(arsf[:,2]);
+    vf+=sum(alsf[:,2]);
     #obteniendo las propiedas de suelo
     #obteniendo el último estrato del campo plinels
     id=model.plinels[end,3];
@@ -527,8 +611,10 @@ function check_stab_wt1(model::Wmodel{<:Real},wforces::VolatileArray{<:Real,2},
     c=k2*c;
     #el empuje pasivo (resistente), primera columna de lsf
     pp=sum(lsf[:,1]);
+    pp+=sum(alsf[:,1]);
     #empuje activo (actuante), primera columna de rsf
     pa=sum(rsf[:,1]);
+    pa+=sum(arsf[:,1]);
     #longitud de la base del muro, maximo valor de x, en la matriz de nudos
     B=maximum(model.nod[:,1]);
     #escribiendo factor de seguridad contra el deslizamiento
@@ -542,4 +628,22 @@ function check_stab_wt1(model::Wmodel{<:Real},wforces::VolatileArray{<:Real,2},
     out[1,4]=vf*(1+6*ex/B)/B;
     out[1,5]=vf*(1-6*ex/B)/B;
     return out;
+end
+
+function combine_soil_forces(args::VolatileArray{<:Real,2}...)
+    nel=length(args);
+    #todos los argumentos deberán tener la misma altura y un mínimo de 6
+    #columnas, en todas las columnas, excepto la 3 y la 4 que corresponderán a
+    #los brazos, se aplicará la suma simple.
+
+    #validando el primer argumento
+    curr=args[1];
+    wd=curr.width;
+    if wd<6
+        error("Se esperaban mínimo 6 columnas en todos los argumentos.")
+    end
+    out=+(args...);
+    out[:,3]=out[:,6]./out[:,2];
+    out[:,4]=out[:,5]./out[:,1];
+    return VolatileArray(out);
 end

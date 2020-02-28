@@ -1,4 +1,4 @@
-#revisión 0.0.5 15-02-2020, 01:00 Julia1.1.0
+#revisión 0.0.6 27-02-2020, 23:10 Julia1.1.0
 import LinearAlgebra: norm
 export VolatileArray
 mutable struct VolatileArray{T,N}<:AbstractArray{T,N}
@@ -171,13 +171,13 @@ function Base.insert!(x::VolatileArray{T,2},id::Int64, n::Array{T,N};
 end
 
 """
-    deleteat!(x::VolatileArray{T,2},id::Int64; dim::Int64=2
+    deleteat!(x::VolatileArray{T,2},id::Int64; dim::Int64
         ) where {T<:Real}
 Elimina una fila o columna del lugar especificado por `id` en `x`, se eliminará
-la columna a menos que `dim` sea ingresado, `dim=1` elimina la fila.
+la columna si `dim=2`, `dim=1` elimina la fila.
 """
 function Base.deleteat!(x::VolatileArray{T,2},id::Int64;
-    dim::Int64=2) where {T<:Real}
+    dim::Int64) where {T<:Real}
     dimy=size(x)[1];
     dimx=size(x)[2];
 
@@ -191,7 +191,7 @@ function Base.deleteat!(x::VolatileArray{T,2},id::Int64;
         @inbounds deleteat!(x.arr,(id-1)*dimy+1:(id-1)*dimy+dimy);
         x.width-=1;
     else
-        error("id no válido")
+        error("id o dimensión no válida")
     end
     return x;
 end
