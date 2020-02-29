@@ -1,4 +1,4 @@
-#revisión 0.0.2 15-02-2020, 01:00 Julia1.1.0
+#revisión 0.0.3 28-02-2020, 21:50 Julia1.1.0
 function report(hp,hz,t1,t2,t3,b1,b2,grav,prop)
 a="
 \\documentclass[oneside,spanish]{scrbook}
@@ -35,6 +35,10 @@ Las dimensiones del muro son:\\\\
   \\caption{Muro de contención de gravedad}
 	\\label{fig:spectre1}
 \\end{figure}
+
+$(ka_rankine_equation_lcode(c=1))
+$(kr_sch_equation_lcode())
+
 \\end{document}
 "
 open("prueba1.tex", "w") do f
@@ -86,4 +90,41 @@ function draw_elm_label_lcode(prop::VolatileArray{<:Real,2})
         "
     end
     return out;
+end
+
+function ka_rankine_equation_lcode(;c::Int64=0,wn::Int64=0)
+    head="*"
+    if wn!=0
+        head=""
+    end
+    out="";
+    if c==0
+        out="\\begin{equation$head}
+        K_a=\\cos\\alpha\\frac{\\cos\\alpha-\\sqrt{\\cos^2\\alpha-
+        \\cos^2\\phi'}}{\\cos\\alpha+\\sqrt{\\cos^2\\alpha-
+        \\cos^2\\phi'}}
+        \\end{equation$head}";
+    else
+        out="\\begin{multline$head}
+        \\frac{K_a}{\\cos\\alpha}=\\frac{1}{\\cos^2\\phi'}
+        \\Bigg(2\\cos^2\\alpha+2\\frac{c'}{\\gamma{z}}\\cos\\phi'\\sen\\phi'\\\\
+        -\\sqrt{4\\cos^2\\alpha(\\cos^2\\alpha-\\cos^2\\phi')+
+        4\\left(\\frac{c'}{\\gamma{z}}\\right)^2\\cos^2\\phi'+8\\frac{c'}{\\gamma{z}}
+        \\cos^2\\alpha\\sen\\phi'\\cos\\phi'}\\Bigg)-1
+        \\end{multline$head}";
+    end
+    return out;
+end
+
+function kp_rankine_equation_lcode()
+end
+
+function kr_sch_equation_lcode(;wn::Int64=0)
+    head="*"
+    if wn!=0
+        head=""
+    end
+    out="\\begin{equation$head}
+    K_o=(1-\\sen\\phi')OCR^{\\sen\\phi'}
+    \\end{equation$head}"
 end
