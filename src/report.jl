@@ -1,4 +1,4 @@
-#revisión 0.0.3 28-02-2020, 21:50 Julia1.1.0
+#revisión 0.0.4 29-02-2020, 23:45 Julia1.1.0
 function report(hp,hz,t1,t2,t3,b1,b2,grav,prop)
 a="
 \\documentclass[oneside,spanish]{scrbook}
@@ -119,12 +119,22 @@ end
 function kp_rankine_equation_lcode()
 end
 
-function kr_sch_equation_lcode(;wn::Int64=0)
+function kr_maku_equation_lcode(;wn::Int64=0)
     head="*"
     if wn!=0
         head=""
     end
     out="\\begin{equation$head}
     K_o=(1-\\sen\\phi')OCR^{\\sen\\phi'}
+    \\end{equation$head}"
+end
+
+function kr_sch_equation_lcode(;wn::Int64=0)
+    head="*"
+    if wn!=0
+        head=""
+    end
+    out="\\begin{equation$head}
+    K_o=0.5\\left(OCR\\right)^{0.5}
     \\end{equation$head}"
 end
