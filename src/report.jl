@@ -1,4 +1,4 @@
-#revisión 0.0.4 29-02-2020, 23:45 Julia1.1.0
+#revisión 0.0.5 03-03-2020, 23:00 Julia1.1.0
 function report(hp,hz,t1,t2,t3,b1,b2,grav,prop)
 a="
 \\documentclass[oneside,spanish]{scrbook}
@@ -22,17 +22,11 @@ Las dimensiones del muro son:\\\\
 \\end{align*}
 \\begin{figure}
 	\\centering
-    \\begin{tikzpicture}
-
-      \\begin{axis}[
-          width=\\linewidth, yticklabels=\\empty,xticklabels=\\empty,
-            ytick=\\empty,xtick=\\empty,axis line style={draw=none}
-        ]
+    \\begin{tikzpicture}[scale=2]
         $(draw_wall_lcode(grav))
         $(draw_elm_label_lcode(prop))
-      \\end{axis}
     \\end{tikzpicture}
-  \\caption{Muro de contención de gravedad}
+  \\caption{Geometría del muro de contención}
 	\\label{fig:spectre1}
 \\end{figure}
 
@@ -54,30 +48,26 @@ function draw_wall_lcode(model::Wmodel{<:Real})
     #número de elementos
     nel=size(model.elm)[1];
 
+    joints=Array(model.nod);
+
     #pbreak indica el punto donde terminan los elementos
     #triangulares
     if model.pbreak>0
         for i in 1:model.pbreak
-            out=out*"\\addplot[black=50!]
-            table[x=x,y=y,col sep=&,row sep=\\\\] {x & y\\\\
-            $(model.nod[model.elm[i,1],1]) & $(model.nod[model.elm[i,1],2])\\\\
-            $(model.nod[model.elm[i,2],1]) & $(model.nod[model.elm[i,2],2])\\\\
-            $(model.nod[model.elm[i,3],1]) & $(model.nod[model.elm[i,3],2])\\\\
-            $(model.nod[model.elm[i,1],1]) & $(model.nod[model.elm[i,1],2])\\\\};
-            "
+            id1=model.elm[i,1];
+            id2=model.elm[i,2];
+            id3=model.elm[i,3];
+            out*=draw_polygon_lcode(joints,id1,id2,id3,close=1);
         end
     end
 
     if model.pbreak<nel
         for i in model.pbreak+1:nel
-            out=out*"\\addplot[black=50!]
-            table[x=x,y=y,col sep=&,row sep=\\\\] {x & y\\\\
-            $(model.nod[model.elm[i,1],1]) & $(model.nod[model.elm[i,1],2])\\\\
-            $(model.nod[model.elm[i,2],1]) & $(model.nod[model.elm[i,2],2])\\\\
-            $(model.nod[model.elm[i,3],1]) & $(model.nod[model.elm[i,3],2])\\\\
-            $(model.nod[model.elm[i,4],1]) & $(model.nod[model.elm[i,4],2])\\\\
-            $(model.nod[model.elm[i,1],1]) & $(model.nod[model.elm[i,1],2])\\\\};
-            "
+            id1=model.elm[i,1];
+            id2=model.elm[i,2];
+            id3=model.elm[i,3];
+            id4=model.elm[i,4];
+            out*=draw_polygon_lcode(joints,id1,id2,id3,id4,close=1);
         end
     end
     return out;
@@ -89,6 +79,22 @@ function draw_elm_label_lcode(prop::VolatileArray{<:Real,2})
         out=out*"\\draw ($(prop[i,2]),$(prop[i,3]))node{\\small{$i}};
         "
     end
+    return out;
+end
+
+function draw_polygon_lcode(joints::Array{<:Real,2},args::Int64...;
+    ops::String="",close::Int64=0)
+    out="
+        \\draw"*"["*ops*"]";
+    out*="
+        ($(joints[args[1],1]),$(joints[args[1],2]))";
+    nel=length(args);
+    for i in 2:nel
+        id=args[i];
+        out*="--
+        ($(joints[id,1]),$(joints[id,2]))"
+    end
+    out*=(close==0 ? ";" : "--cycle;");
     return out;
 end
 
