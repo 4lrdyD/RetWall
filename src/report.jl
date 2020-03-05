@@ -1,4 +1,4 @@
-#revisión 0.0.5 03-03-2020, 23:00 Julia1.1.0
+#revisión 0.0.6 04-03-2020, 22:40 Julia1.1.0
 function report(hp,hz,t1,t2,t3,b1,b2,grav,prop)
 a="
 \\documentclass[oneside,spanish]{scrbook}
@@ -22,8 +22,10 @@ Las dimensiones del muro son:\\\\
 \\end{align*}
 \\begin{figure}
 	\\centering
-    \\begin{tikzpicture}[scale=2]
-        $(draw_wall_lcode(grav))
+    \\begin{tikzpicture}[scale=2.5]
+        $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
+        $(draw_polyline_lcode(Array(grav.nod),5,8,ops="dashed"))
+        $(draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed"))
         $(draw_elm_label_lcode(prop))
     \\end{tikzpicture}
   \\caption{Geometría del muro de contención}
@@ -44,6 +46,7 @@ run(`cmd /c start prueba1.pdf`);
 end
 
 function draw_wall_lcode(model::Wmodel{<:Real})
+    #debe ser insertado dentro de un entorno tikzpicture
     out="";
     #número de elementos
     nel=size(model.elm)[1];
@@ -57,7 +60,7 @@ function draw_wall_lcode(model::Wmodel{<:Real})
             id1=model.elm[i,1];
             id2=model.elm[i,2];
             id3=model.elm[i,3];
-            out*=draw_polygon_lcode(joints,id1,id2,id3,close=1);
+            out*=draw_polyline_lcode(joints,id1,id2,id3,close=1);
         end
     end
 
@@ -67,13 +70,14 @@ function draw_wall_lcode(model::Wmodel{<:Real})
             id2=model.elm[i,2];
             id3=model.elm[i,3];
             id4=model.elm[i,4];
-            out*=draw_polygon_lcode(joints,id1,id2,id3,id4,close=1);
+            out*=draw_polyline_lcode(joints,id1,id2,id3,id4,close=1);
         end
     end
     return out;
 end
 
 function draw_elm_label_lcode(prop::VolatileArray{<:Real,2})
+    #debe ser insertado dentro de un entorno tikzpicture
     out="";
     for i in 1:size(prop)[1]
         out=out*"\\draw ($(prop[i,2]),$(prop[i,3]))node{\\small{$i}};
@@ -82,7 +86,7 @@ function draw_elm_label_lcode(prop::VolatileArray{<:Real,2})
     return out;
 end
 
-function draw_polygon_lcode(joints::Array{<:Real,2},args::Int64...;
+function draw_polyline_lcode(joints::Array{<:Real,2},args::Int64...;
     ops::String="",close::Int64=0)
     out="
         \\draw"*"["*ops*"]";
