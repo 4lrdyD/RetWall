@@ -1,4 +1,4 @@
-#revisión 0.0.6 04-03-2020, 22:40 Julia1.1.0
+#revisión 0.0.7 06-03-2020, 23:20 Julia1.1.0
 function report(hp,hz,t1,t2,t3,b1,b2,grav,prop)
 a="
 \\documentclass[oneside,spanish]{scrbook}
@@ -27,6 +27,9 @@ Las dimensiones del muro son:\\\\
         $(draw_polyline_lcode(Array(grav.nod),5,8,ops="dashed"))
         $(draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed"))
         $(draw_elm_label_lcode(prop))
+        $(draw_soilp_rs_lcode(grav,1))
+        $(draw_soil_surface_lcode(grav))
+        $(draw_spliners_lcode(grav))
     \\end{tikzpicture}
   \\caption{Geometría del muro de contención}
 	\\label{fig:spectre1}
@@ -45,6 +48,11 @@ run(`pdflatex prueba1`);
 run(`cmd /c start prueba1.pdf`);
 end
 
+"""
+    draw_wall_lcode(model::Wmodel{<:Real})
+Retorna el código Latex para dibujar los elementos del muro (campo `elm`)
+,el código deberá ser insertado dentro de un entorno `tickpicture` en Latex.
+"""
 function draw_wall_lcode(model::Wmodel{<:Real})
     #debe ser insertado dentro de un entorno tikzpicture
     out="";
@@ -76,18 +84,41 @@ function draw_wall_lcode(model::Wmodel{<:Real})
     return out;
 end
 
+"""
+    draw_elm_label_lcode(prop::VolatileArray{<:Real,2})
+Retorna el código Latex para dibujar etiquetas ubicadas en los centroides de
+los elementos que conforman el muro, el argumento (`prop`), debería ser
+generado usando la función `wall_forces`, donde las coordenads `x` e `y` de cada
+elemento están en la columna 2 y 3 respectivamente, el código deberá ser
+insertado dentro de un entorno `tickpicture` en Latex.
+"""
 function draw_elm_label_lcode(prop::VolatileArray{<:Real,2})
     #debe ser insertado dentro de un entorno tikzpicture
     out="";
     for i in 1:size(prop)[1]
-        out=out*"\\draw ($(prop[i,2]),$(prop[i,3]))node{\\small{$i}};
+        out*="\\draw ($(prop[i,2]),$(prop[i,3]))node{\\small{$i}};
+        \\draw ($(prop[i,2]),$(prop[i,3]))circle(0.075cm);
         "
     end
     return out;
 end
 
+"""
+    draw_polyline_lcode(joints::Array{<:Real,2},args::Int64...;
+        ops::String="",close::Int64=0)
+Retorna el código Latex para dibujar una polilínea através de los puntos
+ingresados.
+    *`joints`: matriz de puntos, en cada fila, una coordenada `[x y]`.
+    *`args...`: id's o ubicación de los puntos en `joints` que determinan la
+    polilínea.
+    *`ops`: palabra clave opcional, son las opciones de dibujo en Latex.
+    *`close`: palabra clave opcional, `close=1` para cerrar la polilínea luego
+    de alcanzar el último punto.
+El código deberá ser insertado dentro de un entorno `tickpicture` en Latex.
+"""
 function draw_polyline_lcode(joints::Array{<:Real,2},args::Int64...;
     ops::String="",close::Int64=0)
+    #debe ser insertado dentro de un entorno tikzpicture
     out="
         \\draw"*"["*ops*"]";
     out*="
@@ -147,4 +178,74 @@ function kr_sch_equation_lcode(;wn::Int64=0)
     out="\\begin{equation$head}
     K_o=0.5\\left(OCR\\right)^{0.5}
     \\end{equation$head}"
+end
+
+function draw_soilp_rs_lcode(model::Wmodel{<:Real},offs::Real...)
+    out="";
+    pline=model.pliners;
+    nel=size(pline)[1];
+    noffs=length(offs);
+    aoffs=1;#para controlar que no se supere el número de desplazamientos
+            #ingresados
+    for i in 1:nel
+        p1=pline[i,1];
+        p2=pline[i,2];
+        ids=pline[i,3];
+        #propiedades del suelo
+        fi=model.soilprop[ids,1];
+        c=model.soilprop[ids,2];
+        gamma=model.soilprop[ids,3];
+        if c<1e-6
+            c="0"
+        else
+            c="$(c)KPa"
+        end
+        #generando punto de inserción
+        dp=(model.pnod[p1,:]+model.pnod[p2,:])/2;
+        #aplicando desplazamientos
+        if aoffs<=noffs
+            dp[1]+=offs[aoffs];
+            aoffs+=1;
+        end
+        if aoffs<=noffs
+            dp[2]+=offs[aoffs];
+            aoffs+=1;
+        end
+        out*="\\draw ($(dp[1]),$(dp[2]))node[align=left]{
+            \\small{\$\\phi'=$(fi)^\\circ\$}\\\\
+            \\small{\$c'=$(c)\$}\\\\
+            \\small{\$\\gamma=$(gamma)KN/m^3\$}};
+        "
+    end
+    return out;
+end
+
+function draw_soil_surface_lcode(model::Wmodel{<:Real},offs::Real=0)
+    out="";
+    #obteniendo coordenadas del nudo superior derecho
+    nod=model.nod;
+    maxy=nod[10,2];
+    maxx=nod[10,1];
+    #obteniendo vector con componente horizontal unitaria en la dirección de la
+    #pendiente del terreno
+    alpha=deg2rad(model.alpha);
+    uy=tan(alpha);#ux=1, implícito
+    #maximo valor de x, en la matriz de nudos
+    B=maximum(model.nod[:,1]);
+    #desplazando
+    B+=offs;
+    uy*=B;
+    out*="\\draw ($(maxx),$(maxy))--($(maxx+B),$(maxy+uy));"
+end
+
+function draw_spliners_lcode(model::Wmodel{<:Real})
+    pline=model.pliners;
+    p1=pline[1,1];
+    p2=pline[end,2];
+    x1=model.pnod[p1,1];
+    y1=model.pnod[p1,2];
+    x2=model.pnod[p2,1];
+    y2=model.pnod[p2,2];
+    out="\\draw[dashed] ($(x1),$(y1))--($(x2),$(y2));";
+    return out;
 end
