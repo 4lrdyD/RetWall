@@ -1,4 +1,4 @@
-#revisión 0.0.7 06-03-2020, 23:20 Julia1.1.0
+#revisión 0.0.8 07-03-2020, 23:30 Julia1.1.0
 function report(hp,hz,t1,t2,t3,b1,b2,grav,prop)
 a="
 \\documentclass[oneside,spanish]{scrbook}
@@ -28,6 +28,7 @@ Las dimensiones del muro son:\\\\
         $(draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed"))
         $(draw_elm_label_lcode(prop))
         $(draw_soilp_rs_lcode(grav,1))
+        $(draw_soilp_ls_lcode(grav,maximum(grav.nod[:,1])+1,-0.5-grav.D/2))
         $(draw_soil_surface_lcode(grav))
         $(draw_spliners_lcode(grav))
     \\end{tikzpicture}
@@ -222,7 +223,9 @@ end
 
 function draw_soil_surface_lcode(model::Wmodel{<:Real},offs::Real=0)
     out="";
+    #linea de la superficie derecha
     #obteniendo coordenadas del nudo superior derecho
+    #el nudo en la fila 10 en model.nod es el nudo superior derecho del muro
     nod=model.nod;
     maxy=nod[10,2];
     maxx=nod[10,1];
@@ -235,7 +238,20 @@ function draw_soil_surface_lcode(model::Wmodel{<:Real},offs::Real=0)
     #desplazando
     B+=offs;
     uy*=B;
-    out*="\\draw ($(maxx),$(maxy))--($(maxx+B),$(maxy+uy));"
+    out*="\\draw ($(maxx),$(maxy))--($(maxx+B),$(maxy+uy));
+        "
+    #línea de la superficie izquierda
+    #los nudos 5 y 9 forman la pared frontal del muro
+    x1=model.nod[5,1];
+    y1=model.nod[5,2];
+    x2=model.nod[9,1];
+    y2=model.nod[9,2];
+    if (abs(x2-x1)>1e-6)
+        #pendiente de la recta 5->9
+        m=(y2-y1)/(x2-x1);
+        x2=x1+(model.D-y1)/m;
+    end
+    out*="\\draw (0,$(model.D))--($(x2),$(model.D));"
 end
 
 function draw_spliners_lcode(model::Wmodel{<:Real})
@@ -246,6 +262,56 @@ function draw_spliners_lcode(model::Wmodel{<:Real})
     y1=model.pnod[p1,2];
     x2=model.pnod[p2,1];
     y2=model.pnod[p2,2];
-    out="\\draw[dashed] ($(x1),$(y1))--($(x2),$(y2));";
+    out="\\draw[dashed] ($(x1),$(y1))--($(x2),$(y2));
+        ";
+    pline=model.plinels;
+    p1=pline[1,1];
+    p2=pline[end,2];
+    x1=model.pnod[p1,1];
+    y1=model.pnod[p1,2];
+    x2=model.pnod[p2,1];
+    y2=model.pnod[p2,2];
+    out*="\\draw[dashed] ($(x1),$(y1))--($(x2),$(y2));
+    ";
+    return out;
+end
+
+function draw_soilp_ls_lcode(model::Wmodel{<:Real},offs::Real...)
+    out="";
+    pline=model.plinels;
+    nel=size(pline)[1];
+    noffs=length(offs);
+    aoffs=1;#para controlar que no se supere el número de desplazamientos
+            #ingresados
+    for i in 1:nel
+        p1=pline[i,1];
+        p2=pline[i,2];
+        ids=pline[i,3];
+        #propiedades del suelo
+        fi=model.soilprop[ids,1];
+        c=model.soilprop[ids,2];
+        gamma=model.soilprop[ids,3];
+        if c<1e-6
+            c="0"
+        else
+            c="$(c)KPa"
+        end
+        #generando punto de inserción
+        dp=(model.pnod[p1,:]+model.pnod[p2,:])/2;
+        #aplicando desplazamientos
+        if aoffs<=noffs
+            dp[1]+=offs[aoffs];
+            aoffs+=1;
+        end
+        if aoffs<=noffs
+            dp[2]+=offs[aoffs];
+            aoffs+=1;
+        end
+        out*="\\draw ($(dp[1]),$(dp[2]))node[align=left]{
+            \\small{\$\\phi'=$(fi)^\\circ\$}\\\\
+            \\small{\$c'=$(c)\$}\\\\
+            \\small{\$\\gamma=$(gamma)KN/m^3\$}};
+        "
+    end
     return out;
 end
