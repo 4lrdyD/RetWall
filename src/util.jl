@@ -1,4 +1,4 @@
-#revisión 0.0.6 27-02-2020, 23:10 Julia1.1.0
+#revisión 0.0.7 09-03-2020, 23:40 Julia1.1.0
 import LinearAlgebra: norm
 export VolatileArray
 mutable struct VolatileArray{T,N}<:AbstractArray{T,N}
@@ -21,7 +21,11 @@ end
 
 function Base.getindex(x::VolatileArray{T,2},idy::Int64,
     idx::Int64) where {T<:Real}
-    return x.arr[(idx-1)*x.height+idy];
+    if (x.height>=idy && x.width>=idx)
+        return x.arr[(idx-1)*x.height+idy];
+    else
+        error("Índices fuera del límite")
+    end
 end
 
 function Base.getindex(x::VolatileArray{T,2},id::Int64) where {

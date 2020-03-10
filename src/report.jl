@@ -1,5 +1,14 @@
-#revisión 0.0.8 07-03-2020, 23:30 Julia1.1.0
-function report(hp,hz,t1,t2,t3,b1,b2,grav,prop)
+#revisión 0.0.9 09-03-2020, 23:40 Julia1.1.0
+function report(mywall::typeIwall)
+hp=mywall.hp;
+hz=mywall.hz;
+t1=mywall.t1;
+t2=mywall.t2;
+t3=mywall.t3;
+b1=mywall.b1;
+b2=mywall.b2;
+grav=mywall.model;
+prop=wall_forces(grav);
 a="
 \\documentclass[oneside,spanish]{scrbook}
 \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
@@ -158,7 +167,28 @@ function ka_rankine_equation_lcode(;c::Int64=0,wn::Int64=0)
     return out;
 end
 
-function kp_rankine_equation_lcode()
+function kp_rankine_equation_lcode(;c::Int64=0,wn::Int64=0)
+    head="*"
+    if wn!=0
+        head=""
+    end
+    out="";
+    if c==0
+        out="\\begin{equation$head}
+        K_p=\\cos\\alpha\\frac{\\cos\\alpha+\\sqrt{\\cos^2\\alpha-
+        \\cos^2\\phi'}}{\\cos\\alpha-\\sqrt{\\cos^2\\alpha-
+        \\cos^2\\phi'}}
+        \\end{equation$head}";
+    else
+        out="\\begin{multline$head}
+        \\frac{K_p}{\\cos\\alpha}=\\frac{1}{\\cos^2\\phi'}
+        \\Bigg(2\\cos^2\\alpha+2\\frac{c'}{\\gamma{z}}\\cos\\phi'\\sen\\phi'\\\\
+        +\\sqrt{4\\cos^2\\alpha(\\cos^2\\alpha-\\cos^2\\phi')+
+        4\\left(\\frac{c'}{\\gamma{z}}\\right)^2\\cos^2\\phi'+8\\frac{c'}{\\gamma{z}}
+        \\cos^2\\alpha\\sen\\phi'\\cos\\phi'}\\Bigg)-1
+        \\end{multline$head}";
+    end
+    return out;
 end
 
 function kr_maku_equation_lcode(;wn::Int64=0)
@@ -188,11 +218,66 @@ function draw_soilp_rs_lcode(model::Wmodel{<:Real},offs::Real...)
     noffs=length(offs);
     aoffs=1;#para controlar que no se supere el número de desplazamientos
             #ingresados
+    nsp=size(model.soilprop)[1];
+    if nsp==0
+        error("No se ha ingresado ninguna propiedad de suelo");
+    end
     for i in 1:nel
         p1=pline[i,1];
         p2=pline[i,2];
         ids=pline[i,3];
         #propiedades del suelo
+        if ids>nsp
+            error("Propiedad de suelo (id=$ids) no encontrada");
+        end
+        fi=model.soilprop[ids,1];
+        c=model.soilprop[ids,2];
+        gamma=model.soilprop[ids,3];
+        if c<1e-6
+            c="0"
+        else
+            c="$(c)KPa"
+        end
+        #generando punto de inserción
+        dp=(model.pnod[p1,:]+model.pnod[p2,:])/2;
+        #aplicando desplazamientos
+        if aoffs<=noffs
+            dp[1]+=offs[aoffs];
+            aoffs+=1;
+        end
+        if aoffs<=noffs
+            dp[2]+=offs[aoffs];
+            aoffs+=1;
+        end
+        out*="\\draw ($(dp[1]),$(dp[2]))node[align=left]{
+            \\small{\$\\phi'=$(fi)^\\circ\$}\\\\
+            \\small{\$c'=$(c)\$}\\\\
+            \\small{\$\\gamma=$(gamma)KN/m^3\$}};
+        "
+    end
+    return out;
+end
+
+function draw_soilp_ls_lcode(model::Wmodel{<:Real},offs::Real...)
+    out="";
+    pline=model.plinels;
+    nel=size(pline)[1];
+    noffs=length(offs);
+    aoffs=1;#para controlar que no se supere el número de desplazamientos
+            #ingresados
+    nsp=size(model.soilprop)[1];
+    if nsp==0
+        error("No se ha ingresado ninguna propiedad de suelo");
+    end
+
+    for i in 1:nel
+        p1=pline[i,1];
+        p2=pline[i,2];
+        ids=pline[i,3];
+        #propiedades del suelo
+        if ids>nsp
+            error("Propiedad de suelo (id=$ids) no encontrada");
+        end
         fi=model.soilprop[ids,1];
         c=model.soilprop[ids,2];
         gamma=model.soilprop[ids,3];
@@ -251,11 +336,15 @@ function draw_soil_surface_lcode(model::Wmodel{<:Real},offs::Real=0)
         m=(y2-y1)/(x2-x1);
         x2=x1+(model.D-y1)/m;
     end
-    out*="\\draw (0,$(model.D))--($(x2),$(model.D));"
+    out*="\\draw (-.5,$(model.D))--($(x2),$(model.D));"
 end
 
 function draw_spliners_lcode(model::Wmodel{<:Real})
     pline=model.pliners;
+    npl=size(pline)[1];
+    if npl==0
+        error("No se ha construído la línea de presiones")
+    end
     p1=pline[1,1];
     p2=pline[end,2];
     x1=model.pnod[p1,1];
@@ -273,45 +362,5 @@ function draw_spliners_lcode(model::Wmodel{<:Real})
     y2=model.pnod[p2,2];
     out*="\\draw[dashed] ($(x1),$(y1))--($(x2),$(y2));
     ";
-    return out;
-end
-
-function draw_soilp_ls_lcode(model::Wmodel{<:Real},offs::Real...)
-    out="";
-    pline=model.plinels;
-    nel=size(pline)[1];
-    noffs=length(offs);
-    aoffs=1;#para controlar que no se supere el número de desplazamientos
-            #ingresados
-    for i in 1:nel
-        p1=pline[i,1];
-        p2=pline[i,2];
-        ids=pline[i,3];
-        #propiedades del suelo
-        fi=model.soilprop[ids,1];
-        c=model.soilprop[ids,2];
-        gamma=model.soilprop[ids,3];
-        if c<1e-6
-            c="0"
-        else
-            c="$(c)KPa"
-        end
-        #generando punto de inserción
-        dp=(model.pnod[p1,:]+model.pnod[p2,:])/2;
-        #aplicando desplazamientos
-        if aoffs<=noffs
-            dp[1]+=offs[aoffs];
-            aoffs+=1;
-        end
-        if aoffs<=noffs
-            dp[2]+=offs[aoffs];
-            aoffs+=1;
-        end
-        out*="\\draw ($(dp[1]),$(dp[2]))node[align=left]{
-            \\small{\$\\phi'=$(fi)^\\circ\$}\\\\
-            \\small{\$c'=$(c)\$}\\\\
-            \\small{\$\\gamma=$(gamma)KN/m^3\$}};
-        "
-    end
     return out;
 end

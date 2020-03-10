@@ -1,5 +1,5 @@
-#revisión 0.1.2 27-02-2020, 23:10 Julia1.1.0
-export Wmodel, gravity_wall,addsoil!, addmat!,wall_forces,
+#revisión 0.1.3 09-03-2020, 23:40 Julia1.1.0
+export Wmodel, typeIwall, gravity_wall,addsoil!, addmat!,wall_forces,
         soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1,
         uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces
 mutable struct Wmodel{T}
@@ -48,6 +48,23 @@ mutable struct Wmodel{T}
             new{T}(nod,elm,pbreak,matprop,pnod,pliners,plinels,soilprop,0,-1);
     end
 end
+
+mutable struct typeIwall
+    hp::Real
+    hz::Real
+    t1::Real
+    t2::Real
+    t3::Real
+    b1::Real
+    b2::Real
+    model::Wmodel{<:Real}
+    function typeIwall(;hp::Real, hz::Real, t1::Real, t2::Real, t3::Real,
+        b1::Real,b2::Real)
+        model=gravity_wall(;hp=hp, hz=hz, t1=t1, t2=t2, t3=t3, b1=b1, b2=b2);
+        new(hp,hz,t1,t2,t3,b1,b2,model);
+    end
+end
+
 function Base.show(io::IO,x::Wmodel{<:Real})
     print(io,"$(typeof(x))\n");
     print(io,"Fields:\n")
@@ -67,7 +84,15 @@ function wall_forces(model::Wmodel{T}) where {T<:Real}
         model.pbreak);
 
     #obteniendo peso y momento respecto al origen
+    lmp=size(model.matprop)[1];
+    if lmp==0
+        error("No se ha ingresado ningún material")
+    end
     for i in 1:nel
+        sid=model.elm[i,5];
+        if sid>lmp
+            error("No existe la propiedad de suelo al que se hace referencia");
+        end
         @inbounds prop[i,4]=prop[i,1]*model.matprop[model.elm[i,5],3];
         @inbounds prop[i,5]=prop[i,4]*prop[i,2];
     end
@@ -77,7 +102,7 @@ end
 """
     gravity_wall(;hp::Real, hz::Real, t1::Real, t2::Real, t3::Real,
         b1::Real,b2::Real)
-Genera una estructura del tipo `Wproperties`, para un muro de gravedad con los
+Genera una estructura del tipo `Wmodel`, para un muro de gravedad con los
 datos especificados, los datos deben ser ingresados como `keywords`, es decir,
 pueden ingresarse en cualquier orden, pero especificando el nombre la variable,
 por ejemplo:
