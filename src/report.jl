@@ -1,4 +1,4 @@
-#revisión 0.0.9 09-03-2020, 23:40 Julia1.1.0
+#revisión 0.1.0 11-03-2020, 00:35 Julia1.1.0
 function report(mywall::typeIwall)
 hp=mywall.hp;
 hz=mywall.hz;
@@ -14,9 +14,106 @@ a="
 \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
 \\usepackage{amsmath}
 \\usepackage{tikz}
+\\usetikzlibrary{calc}
+\\usepackage{xparse}
 \\usepackage{pgfplots}
 \\pgfplotsset{compat=newest}
 \\usepgfplotslibrary{units}
+\\usepackage{ifluatex}
+\\ifluatex
+% Para poder acotar elementos
+%ver:
+%https://tex.stackexchange.com/a/180110/203837
+%https://tex.stackexchange.com/a/298345/203837
+\\usepackage{pdftexcmds}
+\\makeatletter
+\\let\\pdfstrcmp\\pdf@strcmp
+\\let\\pdffilemoddate\\pdf@filemoddate
+\\makeatother
+\\fi
+\\tikzset{%
+    Cote node/.style={
+        midway,
+        fill=white,
+        inner sep=1.5pt,
+        outer sep=2pt
+    },
+    Cote arrow/.style={
+        <->,
+        >=latex,
+        very thin
+    }
+}
+
+\\makeatletter
+\\NewDocumentCommand{\\Cote}{
+    s       % acotación con flechas afuera
+    D<>{1.5pt} % desplazamiento de línea
+    O{.75cm}    % desplazamiento de acotación
+    m       % primer punto
+    m       % segundo punto
+    m       % etiqueta
+    D<>{o}  % () coordenadas -> ángulo
+            % h -> horizontal,
+            % v -> vertical
+            % o lo que sea -> oblicuo
+    O{}     % parámetro tikzset
+    }{
+
+    {\\tikzset{#8}
+
+    \\coordinate (@1) at #4 ;
+    \\coordinate (@2) at #5 ;
+
+    \\if #7H % acotar línea horizontal
+        \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
+        \\coordinate (@5) at (\$#5+(#3,0)\$) ;
+        \\coordinate (@4) at (\$#4+(#3,0)\$) ;
+    \\else
+    \\if #7V % acotar línea vertical
+        \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
+        \\coordinate (@5) at (\$#5+(0,#3)\$) ;
+        \\coordinate (@4) at (\$#4+(0,#3)\$) ;
+    \\else
+    \\if #7v % acotación vertical
+        \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
+        \\coordinate (@4) at (@0|-@1) ;
+        \\coordinate (@5) at (@0|-@2) ;
+    \\else
+    \\if #7h % acotación horizontal
+        \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (0,#3)\$) ;
+        \\coordinate (@4) at (@0-|@1) ;
+        \\coordinate (@5) at (@0-|@2) ;
+    \\else % acotación concava
+    \\ifnum\\pdfstrcmp{\\unexpanded\\expandafter{\\@car#7\\@nil}}{(}=\\z@
+        \\coordinate (@5) at (\$#7!#3!#5\$) ;
+        \\coordinate (@4) at (\$#7!#3!#4\$) ;
+    \\else % acotación oblicua
+        \\coordinate (@5) at (\$#5!#3!90:#4\$) ;
+        \\coordinate (@4) at (\$#4!#3!-90:#5\$) ;
+    \\fi\\fi\\fi\\fi\\fi
+
+    \\draw[very thin,shorten >= #2,shorten <= -2*#2] (@4) -- #4 ;
+    \\draw[very thin,shorten >= #2,shorten <= -2*#2] (@5) -- #5 ;
+
+    \\IfBooleanTF #1 {% con estrella
+    \\draw[Cote arrow,-] (@4) -- (@5)
+        node[Cote node] {#6\\strut};
+    \\draw[Cote arrow,<-] (@4) -- (\$(@4)!-6pt!(@5)\$) ;
+    \\draw[Cote arrow,<-] (@5) -- (\$(@5)!-6pt!(@4)\$) ;
+    }{% sin estrella
+    \\ifnum\\pdfstrcmp{\\unexpanded\\expandafter{\\@car#7\\@nil}}{(}=\\z@
+        \\draw[Cote arrow] (@5) to[bend right]
+            node[Cote node] {#6\\strut} (@4) ;
+    \\else
+    \\draw[Cote arrow] (@4) -- (@5)
+        node[Cote node] {#6\\strut};
+    \\fi
+    }}
+    }
+
+\\makeatother
+
 \\begin{document}
 \\chapter{Geometría del muro}
 Las dimensiones del muro son:\\\\
