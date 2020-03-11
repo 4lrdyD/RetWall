@@ -14,7 +14,7 @@ a="
 \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
 \\usepackage{amsmath}
 \\usepackage{tikz}
-\\usetikzlibrary{calc}
+\\usetikzlibrary{babel,calc}
 \\usepackage{xparse}
 \\usepackage{pgfplots}
 \\pgfplotsset{compat=newest}
