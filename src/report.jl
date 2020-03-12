@@ -1,4 +1,4 @@
-#revisión 0.1.0 11-03-2020, 00:35 Julia1.1.0
+#revisión 0.1.1 12-03-2020, 00:10 Julia1.1.0
 function report(mywall::typeIwall)
 hp=mywall.hp;
 hz=mywall.hz;
@@ -133,10 +133,11 @@ Las dimensiones del muro son:\\\\
         $(draw_polyline_lcode(Array(grav.nod),5,8,ops="dashed"))
         $(draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed"))
         $(draw_elm_label_lcode(prop))
-        $(draw_soilp_rs_lcode(grav,1))
+        $(draw_soilp_rs_lcode(grav,-1,1))
         $(draw_soilp_ls_lcode(grav,maximum(grav.nod[:,1])+1,-0.5-grav.D/2))
         $(draw_soil_surface_lcode(grav))
         $(draw_spliners_lcode(grav))
+        $(draw_wall_dimensions_lcode(mywall))
     \\end{tikzpicture}
   \\caption{Geometría del muro de contención}
 	\\label{fig:spectre1}
@@ -460,4 +461,45 @@ function draw_spliners_lcode(model::Wmodel{<:Real})
     out*="\\draw[dashed] ($(x1),$(y1))--($(x2),$(y2));
     ";
     return out;
+end
+
+function draw_wall_dimensions_lcode(wall::typeIwall)
+    model=wall.model;
+    nod=model.nod;
+    out="";
+    x1=0; x2=nod[5,1]; dim=round(x2-x1,digits=2);
+    if (dim>0)
+    out*="\\Cote[0.35cm] {($(x1),0)}{($(x2),0)}{\\small{$dim m}};
+        ";
+    end
+    x1=x2; x2=nod[6,1]; dim=round(x2-x1,digits=2);
+    if (dim>0)
+    out*="\\Cote[0.35cm] {($(x1),0)}{($(x2),0)}{\\small{$dim m}};
+        ";
+    end
+    x1=x2; x2=nod[7,1]; dim=round(x2-x1,digits=2);
+    if (dim>0)
+    out*="\\Cote[0.35cm] {($(x1),0)}{($(x2),0)}{\\small{$dim m}};
+        ";
+    end
+    x1=x2; x2=nod[8,1]; dim=round(x2-x1,digits=2);
+    if (dim>0)
+    out*="\\Cote[0.35cm] {($(x1),0)}{($(x2),0)}{\\small{$dim m}};
+        ";
+    end
+    x1=x2; x2=nod[3,1]; dim=round(x2-x1,digits=2);
+    if (dim>0)
+    out*="\\Cote[0.35cm] {($(x1),0)}{($(x2),0)}{\\small{$dim m}};
+        ";
+    end
+    x1=nod[2,1]; y2=nod[3,2]; dim=round(y2,digits=2);
+    if (dim>0)
+    out*="\\Cote[0.35cm]{($(x1),0)}{($(x2),$(y2))}{\\small{$dim m}};
+        ";
+    end
+    y1=y2; y2=nod[10,2]; dim=round(y2-y1,digits=2);
+    if (dim>0)
+    out*="\\Cote[0.35cm]{($(x1),$(y1))}{($(x2),$(y2))}{\\small{$dim m}};
+        ";
+    end
 end
