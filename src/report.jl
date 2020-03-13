@@ -1,4 +1,4 @@
-#revisión 0.1.1 12-03-2020, 00:10 Julia1.1.0
+#revisión 0.1.2 13-03-2020, 00:20 Julia1.1.0
 function report(mywall::typeIwall)
 hp=mywall.hp;
 hz=mywall.hz;
@@ -135,9 +135,10 @@ Las dimensiones del muro son:\\\\
         $(draw_elm_label_lcode(prop))
         $(draw_soilp_rs_lcode(grav,-1,1))
         $(draw_soilp_ls_lcode(grav,maximum(grav.nod[:,1])+1,-0.5-grav.D/2))
-        $(draw_soil_surface_lcode(grav))
+        $(draw_soil_surface_lcode(mywall,1))
         $(draw_spliners_lcode(grav))
         $(draw_wall_dimensions_lcode(mywall))
+        $(draw_qload_lcode(mywall,10,1))
     \\end{tikzpicture}
   \\caption{Geometría del muro de contención}
 	\\label{fig:spectre1}
@@ -404,7 +405,8 @@ function draw_soilp_ls_lcode(model::Wmodel{<:Real},offs::Real...)
     return out;
 end
 
-function draw_soil_surface_lcode(model::Wmodel{<:Real},offs::Real=0)
+function draw_soil_surface_lcode(wall::typeIwall,offs::Real=0)
+    model=wall.model;
     out="";
     #linea de la superficie derecha
     #obteniendo coordenadas del nudo superior derecho
@@ -420,8 +422,8 @@ function draw_soil_surface_lcode(model::Wmodel{<:Real},offs::Real=0)
     B=maximum(model.nod[:,1]);
     #desplazando
     B+=offs;
-    uy*=B;
-    out*="\\draw ($(maxx),$(maxy))--($(maxx+B),$(maxy+uy));
+    uy*=(wall.t3+wall.b2+offs);
+    out*="\\draw ($(maxx),$(maxy))--($B,$(maxy+uy));
         "
     #línea de la superficie izquierda
     #los nudos 5 y 9 forman la pared frontal del muro
@@ -466,40 +468,116 @@ end
 function draw_wall_dimensions_lcode(wall::typeIwall)
     model=wall.model;
     nod=model.nod;
+    #horizontal
     out="";
     x1=0; x2=nod[5,1]; dim=round(x2-x1,digits=2);
     if (dim>0)
-    out*="\\Cote[0.35cm] {($(x1),0)}{($(x2),0)}{\\small{$dim m}};
-        ";
-    end
-    x1=x2; x2=nod[6,1]; dim=round(x2-x1,digits=2);
-    if (dim>0)
-    out*="\\Cote[0.35cm] {($(x1),0)}{($(x2),0)}{\\small{$dim m}};
-        ";
-    end
-    x1=x2; x2=nod[7,1]; dim=round(x2-x1,digits=2);
-    if (dim>0)
-    out*="\\Cote[0.35cm] {($(x1),0)}{($(x2),0)}{\\small{$dim m}};
+    out*="\\Cote[0.35cm] {($(x1),0)}{($(x2),0)}{\\small{$dim m}}[
+        Cote node/.append style={below}];
         ";
     end
     x1=x2; x2=nod[8,1]; dim=round(x2-x1,digits=2);
     if (dim>0)
-    out*="\\Cote[0.35cm] {($(x1),0)}{($(x2),0)}{\\small{$dim m}};
+    out*="\\Cote[0.35cm] {($(x1),0)}{($(x2),0)}{\\small{$dim m}}[
+        Cote node/.append style={below}];
         ";
     end
     x1=x2; x2=nod[3,1]; dim=round(x2-x1,digits=2);
     if (dim>0)
-    out*="\\Cote[0.35cm] {($(x1),0)}{($(x2),0)}{\\small{$dim m}};
+    out*="\\Cote[0.35cm] {($(x1),0)}{($(x2),0)}{\\small{$dim m}}[
+        Cote node/.append style={below}];
         ";
     end
+    #vertical hz, hp
     x1=nod[2,1]; y2=nod[3,2]; dim=round(y2,digits=2);
     if (dim>0)
-    out*="\\Cote[0.35cm]{($(x1),0)}{($(x2),$(y2))}{\\small{$dim m}};
+    out*="\\Cote[0.35cm]{($(x1),0)}{($(x2),$(y2))}{\\small{$dim m}}[
+        Cote node/.append style={right}];
         ";
     end
     y1=y2; y2=nod[10,2]; dim=round(y2-y1,digits=2);
     if (dim>0)
-    out*="\\Cote[0.35cm]{($(x1),$(y1))}{($(x2),$(y2))}{\\small{$dim m}};
+    out*="\\Cote[0.35cm]{($(x1),$(y1))}{($(x2),$(y2))}{\\small{$dim m}}[
+        Cote node/.append style={right}];
         ";
     end
+    #t1
+    x1=nod[9,1]; y1=nod[9,2]; x2=nod[10,1]; y2=y1; dim=round(x2-x1,digits=2);
+    if (dim>0)
+    out*="\\Cote[-0.35cm]{($(x1),$(y1))}{($(x2),$(y2))}{\\small{$dim m}}[
+        Cote node/.append style={above}];
+        ";
+    end
+    #t2 y t3 solo sin ambos son >0
+    dim=round(nod[6,1]-nod[5,1],digits=2);
+    dim1=round(nod[8,1]-nod[7,1],digits=2);
+    if dim>0 && dim1>0
+        x1=nod[5,1];
+        y1=nod[5,2];
+        x2=nod[6,1];
+        y2=nod[6,2];
+        out*="\\Cote[0.35cm]{($(x1),$(y1))}{($(x2),$(y2))}{\\small{$dim m}}[
+            Cote node/.append style={above}];
+            ";
+        x1=nod[7,1];
+        y1=nod[7,2];
+        x2=nod[8,1];
+        y2=nod[8,2];
+        out*="\\Cote[0.35cm]{($(x1),$(y1))}{($(x2),$(y2))}{\\small{$dim1 m}}[
+                Cote node/.append style={above}];
+                ";
+    end
+    #D
+    y2=wall.model.D; dim=round(y2,digits=2);
+    if (dim>0)
+    out*="\\Cote[-0.35cm]{(0,0)}{(0,$y2)}{\\small{$dim m}}[
+        Cote node/.append style={left}];
+        ";
+    end
+    #alfa
+    dim=wall.model.alpha;
+    alpha=deg2rad(dim);
+    y3=nod[10,2]+(wall.t3+wall.b2)*tan(alpha);
+    x3=nod[3,1];
+    x1=x3+.5;
+    y1=y3;
+    x2=x3+.5*cos(alpha);
+    y2=y3+.5*sin(alpha);
+    dim=round(dim,digits=2);
+    if dim>0
+        out*="\\Cote{($x2,$y2)}{($x1,$y1)}{\\small{$dim\$^\\circ\$}}
+            <($x3,$y3)>[Cote node/.append style={right=.5cm}];
+            \\draw[dashed] ($x3,$y3)--($(x3+1),$y3);
+            ";
+    end
+    return out;
+end
+
+function draw_qload_lcode(wall::typeIwall,q::Real,offs::Real=0)
+    model=wall.model;
+    nod=model.nod;
+    out="%carga distribuida
+    ";
+    if q>1e-6
+        alpha=deg2rad(wall.model.alpha);
+        y2=nod[10,2];
+        x2=nod[10,1];
+        x1=x2
+        y1=y2+.5;
+        maxx=x2+wall.t3+wall.b2+offs;
+        while x2<maxx
+            out*="\\draw[->] ($x1,$y1)--($x2,$y2);
+            ";
+            y2+=.5*tan(alpha);
+            x2+=.5;
+            x1=x2
+            y1=y2+.5;
+        end
+        #etiqueta
+        x1=maxx-(wall.t3+wall.b2+offs)/2;
+        y1=nod[10,2]+(x1-nod[10,1])*tan(alpha)+.75;
+        out*="\\draw ($x1,$y1)node{\\small{\$q=$(q)KN/m^2\$}};
+        "
+    end
+    return out;
 end
