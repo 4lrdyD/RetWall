@@ -1,4 +1,4 @@
-#revisión 0.1.2 13-03-2020, 00:20 Julia1.1.0
+#revisión 0.1.3 19-03-2020, 00:00 Julia1.1.0
 function report(mywall::typeIwall)
 hp=mywall.hp;
 hz=mywall.hz;
@@ -134,11 +134,11 @@ Las dimensiones del muro son:\\\\
         $(draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed"))
         $(draw_elm_label_lcode(prop))
         $(draw_soilp_rs_lcode(grav,-1,1))
-        $(draw_soilp_ls_lcode(grav,maximum(grav.nod[:,1])+1,-0.5-grav.D/2))
+        $(draw_soilp_ls_lcode(grav,maximum(grav.nod[:,1])+1,-0.5-mywall.D/2))
         $(draw_soil_surface_lcode(mywall,1))
         $(draw_spliners_lcode(grav))
         $(draw_wall_dimensions_lcode(mywall))
-        $(draw_qload_lcode(mywall,10,1))
+        $(draw_qload_lcode(mywall,1))
     \\end{tikzpicture}
   \\caption{Geometría del muro de contención}
 	\\label{fig:spectre1}
@@ -416,7 +416,7 @@ function draw_soil_surface_lcode(wall::typeIwall,offs::Real=0)
     maxx=nod[10,1];
     #obteniendo vector con componente horizontal unitaria en la dirección de la
     #pendiente del terreno
-    alpha=deg2rad(model.alpha);
+    alpha=deg2rad(wall.alpha);
     uy=tan(alpha);#ux=1, implícito
     #maximo valor de x, en la matriz de nudos
     B=maximum(model.nod[:,1]);
@@ -436,7 +436,7 @@ function draw_soil_surface_lcode(wall::typeIwall,offs::Real=0)
         m=(y2-y1)/(x2-x1);
         x2=x1+(model.D-y1)/m;
     end
-    out*="\\draw (-.5,$(model.D))--($(x2),$(model.D));"
+    out*="\\draw (-.5,$(wall.D))--($(x2),$(wall.D));"
 end
 
 function draw_spliners_lcode(model::Wmodel{<:Real})
@@ -528,14 +528,14 @@ function draw_wall_dimensions_lcode(wall::typeIwall)
                 ";
     end
     #D
-    y2=wall.model.D; dim=round(y2,digits=2);
+    y2=wall.D; dim=round(y2,digits=2);
     if (dim>0)
     out*="\\Cote[-0.35cm]{(0,0)}{(0,$y2)}{\\small{$dim m}}[
         Cote node/.append style={left}];
         ";
     end
     #alfa
-    dim=wall.model.alpha;
+    dim=wall.alpha;
     alpha=deg2rad(dim);
     y3=nod[10,2]+(wall.t3+wall.b2)*tan(alpha);
     x3=nod[3,1];
@@ -553,13 +553,14 @@ function draw_wall_dimensions_lcode(wall::typeIwall)
     return out;
 end
 
-function draw_qload_lcode(wall::typeIwall,q::Real,offs::Real=0)
+function draw_qload_lcode(wall::typeIwall,offs::Real=0)
     model=wall.model;
     nod=model.nod;
+    q=wall.q;
     out="%carga distribuida
     ";
     if q>1e-6
-        alpha=deg2rad(wall.model.alpha);
+        alpha=deg2rad(wall.alpha);
         y2=nod[10,2];
         x2=nod[10,1];
         x1=x2

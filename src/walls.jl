@@ -1,4 +1,4 @@
-#revisión 0.1.3 09-03-2020, 23:40 Julia1.1.0
+#revisión 0.1.4 19-03-2020, 00:00 Julia1.1.0
 export Wmodel, typeIwall, gravity_wall,addsoil!, addmat!,wall_forces,
         soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1,
         uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces
@@ -32,12 +32,6 @@ mutable struct Wmodel{T}
     #propiedades de suelos un tipo de suelo por fila
     soilprop::VolatileArray{T,2}
 
-    #ángulo de inclinación del terreno en grados sexagesimales
-    alpha::Real
-
-    #profundidad de desplante de la cimentación del muro
-    D::Real
-
     function Wmodel(nod::VolatileArray{T,2}, elm::VolatileArray{Int64,2},
         pbreak::Int64) where {T<:Real}
             soilprop=VolatileArray(zeros(0,3));
@@ -45,7 +39,7 @@ mutable struct Wmodel{T}
             pnod=VolatileArray(zeros(0,2));
             pliners=VolatileArray(zeros(Int64,0,5));
             plinels=VolatileArray(zeros(Int64,0,5));
-            new{T}(nod,elm,pbreak,matprop,pnod,pliners,plinels,soilprop,0,-1);
+            new{T}(nod,elm,pbreak,matprop,pnod,pliners,plinels,soilprop);
     end
 end
 
@@ -57,11 +51,17 @@ mutable struct typeIwall
     t3::Real
     b1::Real
     b2::Real
+    #ángulo de inclinación del terreno en grados sexagesimales
+    alpha::Real
+    #profundidad de desplante de la cimentación del muro (m)
+    D::Real
+    #carga distribuida KN/m2
+    q::Real
     model::Wmodel{<:Real}
     function typeIwall(;hp::Real, hz::Real, t1::Real, t2::Real, t3::Real,
         b1::Real,b2::Real)
         model=gravity_wall(;hp=hp, hz=hz, t1=t1, t2=t2, t3=t3, b1=b1, b2=b2);
-        new(hp,hz,t1,t2,t3,b1,b2,model);
+        new(hp,hz,t1,t2,t3,b1,b2,0,-1,0,model);
     end
 end
 
@@ -195,7 +195,7 @@ Devuelve el rango de índices correspondientes a las propiedades agregadas.
 addmat!(model::Wmodel{T},prop::Array{T,N}) where {T<:Real,N}=
     add_field_row(model.matprop,prop);
 
-function build_rankine_pline(model::Wmodel{<:Real})
+function build_rankine_pline(wall::typeIwall)
     #la línea se trazará desde la parte más baja del muro (zapata)
     #verticalmente hasta intersectar con el suelo, por defecto se considerará
     #la parte derecha como la parte posterior del muro (en contacto con el
@@ -203,6 +203,7 @@ function build_rankine_pline(model::Wmodel{<:Real})
     #empuje pasivo).
 
     #obteniendo coordenadas del nudo superior derecho
+    model=wall.model;
     nod=model.nod;
     maxy=maximum(nod[:,2]);
     maxids=findall(isequal(maxy),nod[:,2]);
@@ -215,12 +216,12 @@ function build_rankine_pline(model::Wmodel{<:Real})
     minix=minimum(nod[minids,1]);#x inferior izquierdo
 
     #obteniendo nudo superior de la linea de empuje activo
-    ra=deg2rad(model.alpha);
+    ra=deg2rad(wall.alpha);
     maxdy=maxy+(mindx-maxx)*tan(ra);
 
     #obteniendo nudo superior de la linea de empuje pasivo
     merror="Debe ingresarse una profundidad de cimentación (campo D)"
-    model.D>0 ? maxiy=minix+model.D : error(merror);
+    wall.D>0 ? maxiy=minix+wall.D : error(merror);
 
     #agregando nudos
     model.pnod=VolatileArray([mindx miny;mindx maxdy;minix miny;minix maxiy]);
@@ -330,7 +331,7 @@ function buil_quad(nodes::Array{T,2},
     @inbounds elmp[id,3]=(A1*ym1+A2*ym2)/elmp[id,1];
 end
 
-function soil_rankine_forces_rs(model::Wmodel{<:Real})
+function soil_rankine_forces_rs(model::Wmodel{<:Real};alpha::Real=0)
     nel=size(model.pliners)[1];
     #declarando el objeto de salida
     #será una matriz de nelx6, por cada fila los datos serán
@@ -375,7 +376,7 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real})
         #la utilización de suelo con cohesión solo será permitida para el
         #primer estrato (por ahora)
         fr=deg2rad(fi);
-        ar=deg2rad(model.alpha);
+        ar=deg2rad(alpha);
         if i==1 && c!=0
             #profundidad de la grieta de tensión
             zc=2*c*sqrt((1+sin(fr))/(1-sin(fr)))/gamma;
@@ -394,7 +395,7 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real})
                 err1="estrato, se ingnorará la cohesión en los demás estratos."
                 print(err*err1);
             end
-            ka=ka_rankine(fi,model.alpha);
+            ka=ka_rankine(fi,alpha);
             pa=0.5*gamma*ka*h^2;
             paq=ka*h*qload/cos(ar);
             pat=pa+paq;
