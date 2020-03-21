@@ -1,4 +1,5 @@
-#revisión 0.1.3 19-03-2020, 00:00 Julia1.1.0
+#revisión 0.1.4 21-03-2020, 00:45 Julia1.1.0
+export report;
 function report(mywall::typeIwall)
 hp=mywall.hp;
 hz=mywall.hz;
@@ -9,9 +10,13 @@ b1=mywall.b1;
 b2=mywall.b2;
 grav=mywall.model;
 prop=wall_forces(grav);
+rsf=soil_rankine_forces_rs(grav);
+lsf=soil_rankine_forces_ls(grav);
 a="
 \\documentclass[oneside,spanish]{scrbook}
 \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
+\\usepackage{float}
+\\usepackage{siunitx}
 \\usepackage{amsmath}
 \\usepackage{tikz}
 \\usetikzlibrary{babel,calc}
@@ -115,20 +120,12 @@ a="
 \\makeatother
 
 \\begin{document}
-\\chapter{Geometría del muro}
-Las dimensiones del muro son:\\\\
-\\begin{align*}
-    hp &= $hp m\\\\
-    hz &= $hz m\\\\
-    t1 &= $t1 m\\\\
-    t2 &= $t2 m\\\\
-    t3 &= $t3 m\\\\
-    b1 &= $b1 m\\\\
-    b2 &= $b2 m\\\\
-\\end{align*}
-\\begin{figure}
+\\chapter{Reporte de cálculo del muro H=$(hp+hz) m}
+\\section{Geometría del muro}
+
+\\begin{figure}[H]
 	\\centering
-    \\begin{tikzpicture}[scale=2.5]
+    \\begin{tikzpicture}[scale=2]
         $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
         $(draw_polyline_lcode(Array(grav.nod),5,8,ops="dashed"))
         $(draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed"))
@@ -143,10 +140,22 @@ Las dimensiones del muro son:\\\\
   \\caption{Geometría del muro de contención}
 	\\label{fig:spectre1}
 \\end{figure}
+\\section{Cálculo}
+Para calcular la fuerza activa de Rankine usamos:\\\\
+$(ka_rankine_equation_lcode(c=1,wn=1))
 
-$(ka_rankine_equation_lcode(c=1))
-$(kr_sch_equation_lcode())
+Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
+$(ka_rankine_equation_lcode(wn=1))
 
+Reemplazando los parámetros correspondientes obtenemos:\\\\
+\\begin{table}[H]
+\\caption{Coeficientes de presión y fuerzas del terreno}
+\\label{tab:rsf}
+\\centering
+\\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+$(print_table_lcode(rsf,header=["Ka" "Fx" "Fy" "bx" "by" "Mx" "My"]))
+\\end{tabular}
+\\end{table}
 \\end{document}
 "
 open("prueba1.tex", "w") do f
@@ -579,6 +588,42 @@ function draw_qload_lcode(wall::typeIwall,offs::Real=0)
         y1=nod[10,2]+(x1-nod[10,1])*tan(alpha)+.75;
         out*="\\draw ($x1,$y1)node{\\small{\$q=$(q)KN/m^2\$}};
         "
+    end
+    return out;
+end
+
+function print_table_lcode(rsf::VolatileArray{<:Real,2},ids::Int64...;
+    header::Array{String,2}=Array{String,2}(undef,0,0))
+    out="\\hline
+    ";
+    dy=size(rsf)[1];
+    dx=size(rsf)[2];
+    ncols=length(ids);
+    if ncols==0
+        ids=1:dx;
+    end
+    if length(header)==0
+    else
+        if length(header)==length(ids)
+            cont=1;
+            for i in ids
+                out*="\\textbf{$(header[cont])}"
+                i==ids[end] ? out*="\\\\" : out*="&";
+                cont+=1;
+            end
+            out*="
+            \\hline";
+        else
+            error("La cabecera y número de columnas a usar no son compatibles")
+        end
+    end
+    for i in 1:dy
+        for j in ids
+            out*="$(round(rsf[i,j],digits=2))"
+            j==ids[end] ? out*="\\\\" : out*="&";
+        end
+        out*="
+        \\hline";
     end
     return out;
 end

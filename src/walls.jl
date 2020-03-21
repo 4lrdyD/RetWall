@@ -1,4 +1,4 @@
-#revisión 0.1.4 19-03-2020, 00:00 Julia1.1.0
+#revisión 0.1.5 21-03-2020, 00:45 Julia1.1.0
 export Wmodel, typeIwall, gravity_wall,addsoil!, addmat!,wall_forces,
         soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1,
         uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces
@@ -337,7 +337,8 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real};alpha::Real=0)
     #será una matriz de nelx6, por cada fila los datos serán
     #fuerza en la dirección horizontal, fuerza en la dirección vertical,
     #brazo horizontal, brazo vertical, Momento producido por la fuerza
-    #horizontal y momento producido por la fuerza vertical
+    #horizontal, momento producido por la fuerza vertical y el coeficiente de
+    #presión.
     #Inicialmente la matriz será vacia (0x0)
     #los elementos se irán ingresando según se calculen los valores
     #correspondientes.
@@ -389,6 +390,7 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real};alpha::Real=0)
             out[i,4]=yd+hc/3;#brazo vertical
             out[i,5]=out[i,1]*out[i,4];#momento de la fuerza horizontal
             out[i,6]=out[i,2]*out[i,3];#momento de la fuerza vertical
+            out[i,7]=ka;#coeficiente de presión
         else
             if c!=0
                 err="Por ahora, la cohesión solo es permitida para el primer "
@@ -405,6 +407,7 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real};alpha::Real=0)
             out[i,4]=yd+(pa*h/3+paq*h/2)/pat;#brazo vertical
             out[i,5]=out[i,1]*out[i,4];#momento de la fuerza horizontal
             out[i,6]=out[i,2]*out[i,3];#momento de la fuerza vertical
+            out[i,7]=ka;#coeficiente de presión
         end
         qload+=gamma*h;
     end
@@ -417,7 +420,8 @@ function soil_rankine_forces_ls(model::Wmodel{<:Real})
     #será una matriz de nelx6, por cada fila los datos serán
     #fuerza en la dirección horizontal, fuerza en la dirección vertical,
     #brazo horizontal, brazo vertical, momento producido por la fuerza
-    #horizontal y el momento producido por la fuerza vertical
+    #horizontal, momento producido por la fuerza vertical y el coeficiente
+    #de presión.
     #Inicialmente la matriz será vacia (0x0)
     #los elementos se irán ingresando según se calculen los valores
     #correspondientes.
@@ -472,6 +476,7 @@ function soil_rankine_forces_ls(model::Wmodel{<:Real})
             out[i,4]=((pu*h)*h/2+(0.5*(pd-pu)*h)*h/3)/pp;#brazo vertical
             out[i,5]=pp*out[i,4];#momento de la fuerza horizontal
             out[i,6]=0.0;
+            out[i,7]=kp_rankine(fi,0,c,gamma,h);
         else
             if c!=0
                 err="Por ahora, la cohesión solo es permitida para el primer "
@@ -487,13 +492,14 @@ function soil_rankine_forces_ls(model::Wmodel{<:Real})
             out[i,4]=yd+(pp*h/3+ppq*h/2)/ppt;#brazo vertical
             out[i,5]=ppt*out[i,4];#momento de la fuerza horizontal
             out[i,6]=0.0;
+            out[i,7]=kp;
         end
         qload+=gamma*h;
     end
     return out;
 end
 
-function uload_rankine_forces_rs(model::Wmodel{<:Real},uload::Real)
+function uload_rankine_forces_rs(model::Wmodel{<:Real},uload::Real,alpha::Real)
     nel=size(model.pliners)[1];
     #declarando el objeto de salida
     #será una matriz de nelx6, por cada fila los datos serán
@@ -536,9 +542,9 @@ function uload_rankine_forces_rs(model::Wmodel{<:Real},uload::Real)
         #la utilización de suelo con cohesión solo será permitida para el
         #primer estrato (por ahora)
         fr=deg2rad(fi);
-        ar=deg2rad(model.alpha);
+        ar=deg2rad(alpha);
         if i==1 && c!=0
-            ka=ka_rankine(fi,model.alpha,c,gamma,h);
+            ka=ka_rankine(fi,alpha,c,gamma,h);
             pax=ka*h*uload;#horizontal
             pay=pax*tan(ar);#vertical
             out[i,1]=pax;#fuerza horizontal
@@ -546,10 +552,10 @@ function uload_rankine_forces_rs(model::Wmodel{<:Real},uload::Real)
         else
             if c!=0
                 err="Por ahora, la cohesión solo es permitida para el primer "
-                err1="estrato, se ingnorará la cohesión en los demás estratos."
+                err1="estrato, se ingnorará esta en los demás estratos."
                 print(err*err1);
             end
-            ka=ka_rankine(fi,model.alpha);
+            ka=ka_rankine(fi,alpha);
             pax=ka*h*uload;#horizontal
             pay=pax*tan(ar);#vertical
             out[i,1]=pax;#fuerza horizontal
