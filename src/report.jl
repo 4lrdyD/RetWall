@@ -1,4 +1,4 @@
-#revisión 0.1.4 21-03-2020, 00:45 Julia1.1.0
+#revisión 0.1.5 22-03-2020, 01:05 Julia1.1.0
 export report;
 function report(mywall::typeIwall)
 hp=mywall.hp;
@@ -152,8 +152,8 @@ Reemplazando los parámetros correspondientes obtenemos:\\\\
 \\caption{Coeficientes de presión y fuerzas del terreno}
 \\label{tab:rsf}
 \\centering
-\\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
-$(print_table_lcode(rsf,header=["Ka" "Fx" "Fy" "bx" "by" "Mx" "My"]))
+\\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+$(print_rsf_lcode(rsf))
 \\end{tabular}
 \\end{table}
 \\end{document}
@@ -625,5 +625,17 @@ function print_table_lcode(rsf::VolatileArray{<:Real,2},ids::Int64...;
         out*="
         \\hline";
     end
+    return out;
+end
+
+function print_rsf_lcode(rsf::VolatileArray{T,2}) where {T<:Real}
+    nel=size(rsf)[1];
+    strat=collect(T,1:nel);
+    #agregando una columna (id de estrato)
+    insert!(rsf,1,strat,dim=2);
+    header=["Estrato" "Ka" "Fx" "Fy" "bx" "by" "Mx" "My"];
+    out=print_table_lcode(rsf,1,8,2,3,4,5,6,7,header=header);
+    #eliminando la columna agregada.
+    deleteat!(rsf,1,dim=2);
     return out;
 end
