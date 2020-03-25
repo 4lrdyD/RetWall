@@ -1,4 +1,4 @@
-#revisión 0.1.5 22-03-2020, 01:05 Julia1.1.0
+#revisión 0.1.7 24-03-2020, 23:55 Julia1.1.0
 export report;
 function report(mywall::typeIwall)
 hp=mywall.hp;
@@ -12,11 +12,17 @@ grav=mywall.model;
 prop=wall_forces(grav);
 rsf=soil_rankine_forces_rs(grav);
 lsf=soil_rankine_forces_ls(grav);
+uf=uload_rankine_forces_rs(grav,mywall.q,mywall.alpha)
 a="
 \\documentclass[oneside,spanish]{scrbook}
 \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
 \\usepackage{float}
 \\usepackage{siunitx}
+\\sisetup{
+  round-mode          = places,
+  round-precision     = 2,
+  detect-all=true
+}
 \\usepackage{amsmath}
 \\usepackage{tikz}
 \\usetikzlibrary{babel,calc}
@@ -145,17 +151,60 @@ Para calcular la fuerza activa de Rankine usamos:\\\\
 $(ka_rankine_equation_lcode(c=1,wn=1))
 
 Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
-$(ka_rankine_equation_lcode(wn=1))
+$(ka_rankine_equation_lcode(wn=1))\\\\
 
 Reemplazando los parámetros correspondientes obtenemos:\\\\
 \\begin{table}[H]
-\\caption{Coeficientes de presión y fuerzas del terreno}
+\\caption{Coeficientes de presión activa y fuerzas del terreno}
 \\label{tab:rsf}
 \\centering
-\\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+\\resizebox{\\linewidth}{!}{
+\\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
 $(print_rsf_lcode(rsf))
+\\end{tabular}}
+\\end{table}
+\\ifdim 0.0 pt=$(round(mywall.q,digits=0)) pt
+\\else
+    Por su parte, las fuerzas debidas a la carga distribuida son:\\\\
+    \\begin{table}[H]
+    \\caption{Fuerzas debidas a la carga distribuida \$q=$(mywall.q)KN/m^2\$}
+    \\label{tab:uf}
+    \\centering
+    \\begin{tabular}{|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+    $(print_uf_lcode(uf))
+    \\end{tabular}
+    \\end{table}
+\\fi
+\$F_xb_y\$ es el momento actuante principal y \$F_yb_x\$ contribuye a la
+resistencia. Las fuerzas generadas por el peso del muro se muestran en la
+siguiente tabla:
+\\begin{table}[H]
+\\caption{Fuerzas generadas por el muro}
+\\label{tab:wforce}
+\\centering
+\\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{2cm}|m{1.5cm}|m{2.5cm}|}
+$(print_wf_lcode(prop))
 \\end{tabular}
 \\end{table}
+
+Para calcular la fuerza pasiva de Rankine usamos:\\\\
+$(kp_rankine_equation_lcode(c=1,wn=1))
+
+Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
+$(kp_rankine_equation_lcode(wn=1))\\\\
+
+Reemplazando los parámetros correspondientes obtenemos:\\\\
+\\begin{table}[H]
+\\caption{Coeficientes de presión pasiva y fuerzas del terreno}
+\\label{tab:rsf}
+\\centering
+\\resizebox{\\linewidth}{!}{
+\\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+$(print_lsf_lcode(lsf))
+\\end{tabular}}
+\\end{table}
+\$F_x\$ y el momento que genera (\$F_xb_y\$) contribuyen a la resistencia por
+deslizamiento y por volteo respectivamente, \$F_yb_x\$ es un momento actuante.
 \\end{document}
 "
 open("prueba1.tex", "w") do f
@@ -592,8 +641,28 @@ function draw_qload_lcode(wall::typeIwall,offs::Real=0)
     return out;
 end
 
+"""
+    function print_table_lcode(rsf::VolatileArray{<:Real,2},ids::Int64...;
+        header::Array{String,2}=Array{String,2}(undef,0,0),kwargs...)
+Genera código latex para imprimir una tabla:
+
+    *`rsf`: es una matriz a partir del cuál se generará la tabla.
+
+    *`ids`: es una secuencia de ids que indicará el orden en el cuál se
+    imprimirán las columnas de `rsf` si no se ingresa ningún id, el orden será
+    el que tiene `rsf`.
+
+    *`header`: array de Strings que contendrá las cabeceras de la tabla, debe
+    tener el mismo tamaño que el conjunto de `ids` ingresado, o si no se
+    ingresaron ids el mismo número de columnas de `rsf`.
+
+    *`kwargs`: secuencia de opciones para generar la tabla como palabras clave
+    `precision1=p1`,`precision2=p2`,..., `precisionn=pn` son las precisiones
+    correspondientes para el redondeo de la columna `n`.
+El String generado debe insertarse dentro de un entorno tabular en códido latex.
+"""
 function print_table_lcode(rsf::VolatileArray{<:Real,2},ids::Int64...;
-    header::Array{String,2}=Array{String,2}(undef,0,0))
+    header::Array{String,2}=Array{String,2}(undef,0,0),kwargs...)
     out="\\hline
     ";
     dy=size(rsf)[1];
@@ -607,7 +676,7 @@ function print_table_lcode(rsf::VolatileArray{<:Real,2},ids::Int64...;
         if length(header)==length(ids)
             cont=1;
             for i in ids
-                out*="\\textbf{$(header[cont])}"
+                out*="\\textbf{\$$(header[cont])\$}"
                 i==ids[end] ? out*="\\\\" : out*="&";
                 cont+=1;
             end
@@ -619,7 +688,17 @@ function print_table_lcode(rsf::VolatileArray{<:Real,2},ids::Int64...;
     end
     for i in 1:dy
         for j in ids
-            out*="$(round(rsf[i,j],digits=2))"
+            #buscando si se ingresaron precisiones para la columna actual
+            #creando variable local que guardará la precisión (entero)
+            local prs::Int64;
+            prsh="precision$j"
+            prsh=Meta.parse(prsh);
+            haskey(kwargs,prsh) ? prs=kwargs[prsh] : prs=2;
+            if prs!=0
+                out*="\$$(round(rsf[i,j],digits=prs))\$"
+            else
+                out*="\$$(round(Int64,rsf[i,j]))\$"
+            end
             j==ids[end] ? out*="\\\\" : out*="&";
         end
         out*="
@@ -629,13 +708,59 @@ function print_table_lcode(rsf::VolatileArray{<:Real,2},ids::Int64...;
 end
 
 function print_rsf_lcode(rsf::VolatileArray{T,2}) where {T<:Real}
+    #imprime la tabla generadas por el terreno
+    #debe insertarse dentro de un entorno tabular en latex
     nel=size(rsf)[1];
     strat=collect(T,1:nel);
     #agregando una columna (id de estrato)
     insert!(rsf,1,strat,dim=2);
-    header=["Estrato" "Ka" "Fx" "Fy" "bx" "by" "Mx" "My"];
-    out=print_table_lcode(rsf,1,8,2,3,4,5,6,7,header=header);
+    header=["Estrato" "K_a" "F_x(KN/m)" "F_y(KN/m)" "b_x(m)" "b_y(m)" "F_xb_y" "F_yb_x"];
+    out=print_table_lcode(rsf,1,8,2,3,4,5,6,7,header=header,precision1=0,
+        precision8=4);
     #eliminando la columna agregada.
     deleteat!(rsf,1,dim=2);
+    return out;
+end
+
+function print_lsf_lcode(lsf::VolatileArray{T,2}) where {T<:Real}
+    #imprime la tabla generadas por el terreno (pasivo)
+    #debe insertarse dentro de un entorno tabular en latex
+    nel=size(lsf)[1];
+    strat=collect(T,1:nel);
+    #agregando una columna (id de estrato)
+    insert!(lsf,1,strat,dim=2);
+    header=["Estrato" "K_p" "F_x(KN/m)" "F_y(KN/m)" "b_x(m)" "b_y(m)" "F_xb_y" "F_yb_x"];
+    out=print_table_lcode(lsf,1,8,2,3,4,5,6,7,header=header,precision1=0,
+        precision8=4);
+    #eliminando la columna agregada.
+    deleteat!(lsf,1,dim=2);
+    return out;
+end
+
+function print_uf_lcode(uf::VolatileArray{T,2}) where {T<:Real}
+    #imprime la tabla generadas por el terreno
+    #debe insertarse dentro de un entorno tabular en latex
+    nel=size(uf)[1];
+    strat=collect(T,1:nel);
+    #agregando una columna (id de estrato)
+    insert!(uf,1,strat,dim=2);
+    header=["Estrato" "F_x(KN/m)" "F_y(KN/m)" "b_x(m)" "b_y(m)" "F_xb_y" "F_yb_x"];
+    out=print_table_lcode(uf,1,2,3,4,5,6,7,header=header,precision1=0);
+    #eliminando la columna agregada.
+    deleteat!(uf,1,dim=2);
+    return out;
+end
+
+function print_wf_lcode(wforce::VolatileArray{T,2}) where {T<:Real}
+    #imprime la tabla de fuerzas generadas por el muro
+    #debe insertarse dentro de un entorno tabular en latex
+    nel=size(wforce)[1];
+    strat=collect(T,1:nel);
+    #agregando una columna (id de estrato)
+    insert!(wforce,1,strat,dim=2);
+    header=["Num" "A(m^2)" "P(KN/m)" "b(m)" "M(KN.m/m)"];
+    out=print_table_lcode(wforce,1,2,5,3,6,header=header,precision1=0);
+    #eliminando la columna agregada.
+    deleteat!(wforce,1,dim=2);
     return out;
 end
