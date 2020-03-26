@@ -1,4 +1,4 @@
-#revisión 0.1.7 24-03-2020, 23:55 Julia1.1.0
+#revisión 0.1.8 26-03-2020, 01:30 Julia1.1.0
 export report;
 function report(mywall::typeIwall)
 hp=mywall.hp;
@@ -12,7 +12,26 @@ grav=mywall.model;
 prop=wall_forces(grav);
 rsf=soil_rankine_forces_rs(grav);
 lsf=soil_rankine_forces_ls(grav);
-uf=uload_rankine_forces_rs(grav,mywall.q,mywall.alpha)
+uf=uload_rankine_forces_rs(grav,mywall.q,mywall.alpha);
+factors=check_stab_wt1(grav,prop,rsf,lsf,arsf=uf);
+
+#expresión para factor de seguridad por volteo
+Mr=sum(prop[:,5]);
+Mrs="$(round(Mr,digits=2))"
+Mr=sum(rsf[:,6]);
+if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
+Mr=sum(lsf[:,5]);
+if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
+Mr=sum(uf[:,6]);
+if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
+#los momentos actuantes se encuetran en la 5ta columna de rsf y 6ta columna
+#de lsf
+Ma=sum(rsf[:,5]);
+Mas="$(round(Ma,digits=2))"
+Ma=sum(lsf[:,6]);
+if Ma!=0 Mas*="+$(round(Ma,digits=2))" end
+Ma=sum(uf[:,5]);
+if Ma!=0 Mas*="+$(round(Ma,digits=2))" end
 a="
 \\documentclass[oneside,spanish]{scrbook}
 \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
@@ -147,7 +166,7 @@ a="
 	\\label{fig:spectre1}
 \\end{figure}
 \\section{Cálculo}
-Para calcular la fuerza activa de Rankine usamos:\\\\
+Para calcular la coeficiente de presión activa de Rankine usamos:\\\\
 $(ka_rankine_equation_lcode(c=1,wn=1))
 
 Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
@@ -187,7 +206,7 @@ $(print_wf_lcode(prop))
 \\end{tabular}
 \\end{table}
 
-Para calcular la fuerza pasiva de Rankine usamos:\\\\
+Para calcular el coeficiente de presión pasiva de Rankine usamos:\\\\
 $(kp_rankine_equation_lcode(c=1,wn=1))
 
 Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
@@ -204,7 +223,14 @@ $(print_lsf_lcode(lsf))
 \\end{tabular}}
 \\end{table}
 \$F_x\$ y el momento que genera (\$F_xb_y\$) contribuyen a la resistencia por
-deslizamiento y por volteo respectivamente, \$F_yb_x\$ es un momento actuante.
+deslizamiento y por volteo respectivamente, \$F_yb_x\$ es un momento actuante.\\\\
+
+Factor de seguridad contra el volteo:\\\\
+
+\$FS_{volteo}=\\dfrac{\\Sigma M_R}{M_o}=\\dfrac{$Mrs}{$Mas}=$(round(factors[1],digits=2))\$
+
+Factor de seguridad contra el deslizamiento:
+
 \\end{document}
 "
 open("prueba1.tex", "w") do f
