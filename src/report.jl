@@ -1,4 +1,4 @@
-#revisión 0.1.8 26-03-2020, 01:30 Julia1.1.0
+#revisión 0.1.9 27-03-2020, 00:30 Julia1.1.0
 export report;
 function report(mywall::typeIwall)
 hp=mywall.hp;
@@ -15,6 +15,7 @@ lsf=soil_rankine_forces_ls(grav);
 uf=uload_rankine_forces_rs(grav,mywall.q,mywall.alpha);
 factors=check_stab_wt1(grav,prop,rsf,lsf,arsf=uf);
 
+#---------------------------------------------
 #expresión para factor de seguridad por volteo
 Mr=sum(prop[:,5]);
 Mrs="$(round(Mr,digits=2))"
@@ -27,11 +28,40 @@ if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
 #los momentos actuantes se encuetran en la 5ta columna de rsf y 6ta columna
 #de lsf
 Ma=sum(rsf[:,5]);
-Mas="$(round(Ma,digits=2))"
+Mas="$(round(Ma,digits=2))";
 Ma=sum(lsf[:,6]);
 if Ma!=0 Mas*="+$(round(Ma,digits=2))" end
 Ma=sum(uf[:,5]);
 if Ma!=0 Mas*="+$(round(Ma,digits=2))" end
+
+#-------------------------------------------------------
+#expresión para factor de seguridad contra deslizamiento
+vf=sum(prop[:,4]);
+vfs="($(round(vf,digits=2))";
+vf=sum(rsf[:,2]);
+if vf!=0 vfs*="+$(round(vf,digits=2))" end
+vf=sum(lsf[:,2]);
+if vf!=0 vfs*="+$(round(vf,digits=2))" end
+vf=sum(uf[:,2]);
+if vf!=0 vfs*="+$(round(vf,digits=2))" end
+vfs*=")";
+#obteniendo las propiedas de suelo
+#obteniendo el último estrato del campo plinels
+id=grav.plinels[end,3];
+fi=grav.soilprop[id,1];
+c=grav.soilprop[id,2];
+vfs*="\\tan(\\frac{2}{3}\\times$(round(fi,digits=2))^\\circ)";
+B=round(t1+t2+t3+b1+b2,digits=2);
+vfs*="+$B\\times\\frac{2}{3}\\times$(round(c,digits=2))";
+#el empuje pasivo (resistente), primera columna de lsf
+pp=sum(lsf[:,1]);
+vfs*="+$(round(pp,digits=2))";
+#empuje activo (actuante), primera columna de rsf
+pa=sum(rsf[:,1]);
+pas="$(round(pa,digits=2))";
+pa=sum(uf[:,1]);
+if pa!=0 pas*="+$(round(pa,digits=2))" end
+
 a="
 \\documentclass[oneside,spanish]{scrbook}
 \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
@@ -167,10 +197,14 @@ a="
 \\end{figure}
 \\section{Cálculo}
 Para calcular la coeficiente de presión activa de Rankine usamos:\\\\
-$(ka_rankine_equation_lcode(c=1,wn=1))
+\\begin{multline}
+$(ka_rankine_equation_lcode(c=1))
+\\end{multline}
 
 Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
-$(ka_rankine_equation_lcode(wn=1))\\\\
+\\begin{equation}
+$(ka_rankine_equation_lcode())
+\\end{equation}\\\\
 
 Reemplazando los parámetros correspondientes obtenemos:\\\\
 \\begin{table}[H]
@@ -207,10 +241,14 @@ $(print_wf_lcode(prop))
 \\end{table}
 
 Para calcular el coeficiente de presión pasiva de Rankine usamos:\\\\
-$(kp_rankine_equation_lcode(c=1,wn=1))
+\\begin{multline}
+$(kp_rankine_equation_lcode(c=1))
+\\end{multline}
 
 Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
-$(kp_rankine_equation_lcode(wn=1))\\\\
+\\begin{equation}
+$(kp_rankine_equation_lcode())
+\\end{equation}\\\\
 
 Reemplazando los parámetros correspondientes obtenemos:\\\\
 \\begin{table}[H]
@@ -226,10 +264,16 @@ $(print_lsf_lcode(lsf))
 deslizamiento y por volteo respectivamente, \$F_yb_x\$ es un momento actuante.\\\\
 
 Factor de seguridad contra el volteo:\\\\
+\\begin{center}
+\$FS_{volteo}=\\dfrac{\\Sigma M_R}{M_o}=\\dfrac{$Mrs}{$Mas}=$(round(factors[1],digits=2))\$\\\\
+\\end{center}
 
-\$FS_{volteo}=\\dfrac{\\Sigma M_R}{M_o}=\\dfrac{$Mrs}{$Mas}=$(round(factors[1],digits=2))\$
-
-Factor de seguridad contra el deslizamiento:
+Factor de seguridad contra el deslizamiento:\\\\
+\\begin{align*}
+FS_{deslizamiento}&=$(slip_factor_equation_lcode())\\\\
+&=\\dfrac{$(vfs)}{$(pas)}\\\\
+&=$(round(factors[2],digits=2))
+\\end{align*}
 
 \\end{document}
 "
@@ -326,73 +370,43 @@ function draw_polyline_lcode(joints::Array{<:Real,2},args::Int64...;
     return out;
 end
 
-function ka_rankine_equation_lcode(;c::Int64=0,wn::Int64=0)
-    head="*"
-    if wn!=0
-        head=""
-    end
+function ka_rankine_equation_lcode(;c::Int64=0)
     out="";
     if c==0
-        out="\\begin{equation$head}
-        K_a=\\cos\\alpha\\frac{\\cos\\alpha-\\sqrt{\\cos^2\\alpha-
+        out="K_a=\\cos\\alpha\\frac{\\cos\\alpha-\\sqrt{\\cos^2\\alpha-
         \\cos^2\\phi'}}{\\cos\\alpha+\\sqrt{\\cos^2\\alpha-
-        \\cos^2\\phi'}}
-        \\end{equation$head}";
+        \\cos^2\\phi'}}";
     else
-        out="\\begin{multline$head}
-        \\frac{K_a}{\\cos\\alpha}=\\frac{1}{\\cos^2\\phi'}
+        out="\\frac{K_a}{\\cos\\alpha}=\\frac{1}{\\cos^2\\phi'}
         \\Bigg(2\\cos^2\\alpha+2\\frac{c'}{\\gamma{z}}\\cos\\phi'\\sen\\phi'\\\\
         -\\sqrt{4\\cos^2\\alpha(\\cos^2\\alpha-\\cos^2\\phi')+
         4\\left(\\frac{c'}{\\gamma{z}}\\right)^2\\cos^2\\phi'+8\\frac{c'}{\\gamma{z}}
-        \\cos^2\\alpha\\sen\\phi'\\cos\\phi'}\\Bigg)-1
-        \\end{multline$head}";
+        \\cos^2\\alpha\\sen\\phi'\\cos\\phi'}\\Bigg)-1";
     end
     return out;
 end
 
-function kp_rankine_equation_lcode(;c::Int64=0,wn::Int64=0)
-    head="*"
-    if wn!=0
-        head=""
-    end
+function kp_rankine_equation_lcode(;c::Int64=0)
     out="";
     if c==0
-        out="\\begin{equation$head}
-        K_p=\\cos\\alpha\\frac{\\cos\\alpha+\\sqrt{\\cos^2\\alpha-
+        out="K_p=\\cos\\alpha\\frac{\\cos\\alpha+\\sqrt{\\cos^2\\alpha-
         \\cos^2\\phi'}}{\\cos\\alpha-\\sqrt{\\cos^2\\alpha-
-        \\cos^2\\phi'}}
-        \\end{equation$head}";
+        \\cos^2\\phi'}}";
     else
-        out="\\begin{multline$head}
-        \\frac{K_p}{\\cos\\alpha}=\\frac{1}{\\cos^2\\phi'}
+        out="\\frac{K_p}{\\cos\\alpha}=\\frac{1}{\\cos^2\\phi'}
         \\Bigg(2\\cos^2\\alpha+2\\frac{c'}{\\gamma{z}}\\cos\\phi'\\sen\\phi'\\\\
         +\\sqrt{4\\cos^2\\alpha(\\cos^2\\alpha-\\cos^2\\phi')+
         4\\left(\\frac{c'}{\\gamma{z}}\\right)^2\\cos^2\\phi'+8\\frac{c'}{\\gamma{z}}
-        \\cos^2\\alpha\\sen\\phi'\\cos\\phi'}\\Bigg)-1
-        \\end{multline$head}";
+        \\cos^2\\alpha\\sen\\phi'\\cos\\phi'}\\Bigg)-1";
     end
     return out;
 end
 
-function kr_maku_equation_lcode(;wn::Int64=0)
-    head="*"
-    if wn!=0
-        head=""
-    end
-    out="\\begin{equation$head}
-    K_o=(1-\\sen\\phi')OCR^{\\sen\\phi'}
-    \\end{equation$head}"
-end
+kr_maku_equation_lcode()="K_o=(1-\\sen\\phi')OCR^{\\sen\\phi'}";
+kr_sch_equation_lcode()="K_o=0.5\\left(OCR\\right)^{0.5}";
 
-function kr_sch_equation_lcode(;wn::Int64=0)
-    head="*"
-    if wn!=0
-        head=""
-    end
-    out="\\begin{equation$head}
-    K_o=0.5\\left(OCR\\right)^{0.5}
-    \\end{equation$head}"
-end
+slip_factor_equation_lcode()="\\dfrac{\\Sigma V\\tan{(k_1\\phi')}+Bk_2c'_2+P_p}
+    {P_a\\cos\\alpha}";
 
 function draw_soilp_rs_lcode(model::Wmodel{<:Real},offs::Real...)
     out="";
