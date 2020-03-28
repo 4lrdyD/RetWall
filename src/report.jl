@@ -1,4 +1,4 @@
-#revisión 0.1.9 27-03-2020, 00:30 Julia1.1.0
+#revisión 0.2.0 27-03-2020, 23:45 Julia1.1.0
 export report;
 function report(mywall::typeIwall)
 hp=mywall.hp;
@@ -11,7 +11,7 @@ b2=mywall.b2;
 grav=mywall.model;
 prop=wall_forces(grav);
 rsf=soil_rankine_forces_rs(grav);
-lsf=soil_rankine_forces_ls(grav);
+lsf=soil_rankine_forces_ls(grav);lsf[5]=0;
 uf=uload_rankine_forces_rs(grav,mywall.q,mywall.alpha);
 factors=check_stab_wt1(grav,prop,rsf,lsf,arsf=uf);
 
@@ -44,7 +44,7 @@ vf=sum(lsf[:,2]);
 if vf!=0 vfs*="+$(round(vf,digits=2))" end
 vf=sum(uf[:,2]);
 if vf!=0 vfs*="+$(round(vf,digits=2))" end
-vfs*=")";
+vfs*=")"; vfs1=vfs;
 #obteniendo las propiedas de suelo
 #obteniendo el último estrato del campo plinels
 id=grav.plinels[end,3];
@@ -62,6 +62,20 @@ pas="$(round(pa,digits=2))";
 pa=sum(uf[:,1]);
 if pa!=0 pas*="+$(round(pa,digits=2))" end
 
+#-------------------------------
+#texto o mensaje de verificación Ok!! cuando cumple.
+fsvs=factors[1]>2 ? ">2\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
+fsds=factors[2]>1.5 ? ">1.5\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
+es=factors[3]<B/6 ? "<\\dfrac{B}{2}=\\dfrac{$(round(B,digits=2))}{6}=$(round(B/6,digits=3))" : "";
+#revisando si se ingreso la capacidad de carga
+ncol=size(grav.soilprop)[2];
+qa=0;
+if ncol>=5
+    qa=grav.soilprop[id,5];
+ end
+qps=factors[4]<qa && factors[5]<qa ?
+    "<$(round(qa,digits=2))KN/m^2\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" :
+    "";
 a="
 \\documentclass[oneside,spanish]{scrbook}
 \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
@@ -206,7 +220,7 @@ Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
 $(ka_rankine_equation_lcode())
 \\end{equation}\\\\
 
-Reemplazando los parámetros correspondientes obtenemos:\\\\
+Reemplazando los parámetros correspondientes obtenemos:
 \\begin{table}[H]
 \\caption{Coeficientes de presión activa y fuerzas del terreno}
 \\label{tab:rsf}
@@ -218,7 +232,7 @@ $(print_rsf_lcode(rsf))
 \\end{table}
 \\ifdim 0.0 pt=$(round(mywall.q,digits=0)) pt
 \\else
-    Por su parte, las fuerzas debidas a la carga distribuida son:\\\\
+    Por su parte, las fuerzas debidas a la carga distribuida son:
     \\begin{table}[H]
     \\caption{Fuerzas debidas a la carga distribuida \$q=$(mywall.q)KN/m^2\$}
     \\label{tab:uf}
@@ -250,7 +264,7 @@ Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
 $(kp_rankine_equation_lcode())
 \\end{equation}\\\\
 
-Reemplazando los parámetros correspondientes obtenemos:\\\\
+Reemplazando los parámetros correspondientes obtenemos:
 \\begin{table}[H]
 \\caption{Coeficientes de presión pasiva y fuerzas del terreno}
 \\label{tab:rsf}
@@ -264,15 +278,29 @@ $(print_lsf_lcode(lsf))
 deslizamiento y por volteo respectivamente, \$F_yb_x\$ es un momento actuante.\\\\
 
 Factor de seguridad contra el volteo:\\\\
-\\begin{center}
-\$FS_{volteo}=\\dfrac{\\Sigma M_R}{M_o}=\\dfrac{$Mrs}{$Mas}=$(round(factors[1],digits=2))\$\\\\
-\\end{center}
+\\begin{align*}
+FS_{volteo}=\\dfrac{\\Sigma M_R}{M_o}=\\dfrac{$Mrs}{$Mas}=
+    $(round(factors[1],digits=2))$fsvs\\\\
+\\end{align*}
 
 Factor de seguridad contra el deslizamiento:\\\\
 \\begin{align*}
 FS_{deslizamiento}&=$(slip_factor_equation_lcode())\\\\
 &=\\dfrac{$(vfs)}{$(pas)}\\\\
-&=$(round(factors[2],digits=2))
+&=$(round(factors[2],digits=2))$fsds
+\\end{align*}
+Revisión por falla por capacidad de carga:\\\\
+\\begin{align*}
+e&=$(eccentricity_equation_lcode())\\\\
+&=\\dfrac{$(round(B,digits=2))}{2}-\\dfrac{($Mrs)-($Mas)}{$vfs1}\\\\
+&=$(round(factors[3],digits=3)) m$es\\\\
+\\end{align*}
+\\begin{align*}
+q_{tal\\acute on}^{pie}&=$(soil_pressure_equation_lcode())\\\\
+&=\\dfrac{$vfs1}{$(round(B,digits=2))}\\left(1\\pm\\dfrac
+    {6\\times$(round(factors[3],digits=3))}{$(round(B,digits=2))}\\right)\\\\
+q_{pie}&=$(round(factors[4],digits=2))KN/m^2\\\\
+q_{tal\\acute on}&=$(round(factors[5],digits=2))KN/m^2$qps
 \\end{align*}
 
 \\end{document}
@@ -404,9 +432,12 @@ end
 
 kr_maku_equation_lcode()="K_o=(1-\\sen\\phi')OCR^{\\sen\\phi'}";
 kr_sch_equation_lcode()="K_o=0.5\\left(OCR\\right)^{0.5}";
-
 slip_factor_equation_lcode()="\\dfrac{\\Sigma V\\tan{(k_1\\phi')}+Bk_2c'_2+P_p}
     {P_a\\cos\\alpha}";
+eccentricity_equation_lcode()="\\dfrac{B}{2}-\\dfrac{\\Sigma M_R-\\Sigma M_O}
+    {\\Sigma V}";
+soil_pressure_equation_lcode()="\\dfrac{\\Sigma V}{B}\\left(1\\pm
+    \\dfrac{6e}{B}\\right)";
 
 function draw_soilp_rs_lcode(model::Wmodel{<:Real},offs::Real...)
     out="";
