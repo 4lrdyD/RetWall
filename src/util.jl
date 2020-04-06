@@ -1,6 +1,6 @@
-#revisión 0.0.8 30-03-2020, 00:35 Julia1.1.0
+#revisión 0.0.9 06-04-2020, 00:45 Julia1.1.0
 import LinearAlgebra: norm
-export VolatileArray, orient_model
+export VolatileArray
 mutable struct VolatileArray{T,N}<:AbstractArray{T,N}
     arr::Array{T,1}
     height::Int64
@@ -75,6 +75,11 @@ function Base.setindex!(x::VolatileArray{T,2},value::N,
         x.width=nw;
     end
     return value;
+end
+
+function Base.copy(x::VolatileArray{T,2}) where {T<:Real}
+    arr=copy(x.arr);
+    return VolatileArray(arr,x.height,x.width);
 end
 
 """
@@ -559,40 +564,4 @@ function orient_quad!(nodes::VolatileArray{<:Real,2},
         end
     end
     return out;
-end
-
-"""
-    orient_model(model::Wmodel{<:Real})
-Orientará todos los elementos (campo `elm`).
-"""
-function orient_model(model::Wmodel{<:Real})
-    nod=model.nod;
-    elm=model.elm;
-    cont=1;
-    #recorriendo elementos triangulares
-    for i in 1:model.pbreak
-        key=orient_tri!(nod,elm,cont);
-        #key=0 indica que no se eliminó el elemento y
-        #puede avanzarse a la siguiente ubicación, key=-1 indica que se
-        #eliminó el elemento, cont se mantiene
-        if key==0 cont+=1 end
-    end
-    #actualizando campo pbreak
-    model.pbreak=cont-1;
-    nel=size(elm)[1];
-    #recorriendo elementos cuadrangulares
-    for i in cont:nel
-        key=orient_quad!(nod,elm,cont,model.pbreak);
-        #key=-1 indica que el elemento fue elminado
-        #key=1, se transforma el elemento a triángulo, se elimina el cuadrilátero
-        #pero se agrega un triangulo
-        #no se realizó ningún cambio (key=0).
-        if key==1
-            model.pbreak+=1;
-            cont+=1;
-        elseif key==0;
-            cont+=1;
-        end
-    end
-    return elm;
 end

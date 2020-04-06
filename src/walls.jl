@@ -1,7 +1,8 @@
-#revisión 0.1.5 21-03-2020, 00:45 Julia1.1.0
+#revisión 0.1.6 06-04-2020, 00:45 Julia1.1.0
 export Wmodel, typeIwall, gravity_wall,addsoil!, addmat!,wall_forces,
         soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1,
-        uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces
+        uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces,
+        orient_model!, rebuild!
 mutable struct Wmodel{T}
     #nudos para el muro
     nod::VolatileArray{T,2}
@@ -43,6 +44,19 @@ mutable struct Wmodel{T}
     end
 end
 
+function Base.copy(model::Wmodel{<:Real})
+    nods=copy(model.nod);
+    elms=copy(model.elm);
+    out=Wmodel(nods,elms,model.pbreak);
+
+    out.matprop=copy(model.matprop);
+    out.pnod=copy(model.pnod);
+    out.pliners=copy(model.pliners);
+    out.plinels=copy(model.plinels);
+    out.soilprop=copy(model.soilprop);
+    return out;
+end
+
 mutable struct typeIwall
     hp::Real
     hz::Real
@@ -73,6 +87,55 @@ function Base.show(io::IO,x::Wmodel{<:Real})
     print(io,"pbreak: $(x.pbreak) $(typeof(x.pbreak))");
 end
 
+function rebuild!(x::typeIwall)
+    hp=x.hp;
+    hz=x.hz;
+    t1=x.t1;
+    t2=x.t2;
+    t3=x.t3;
+    b1=x.b1;
+    b2=x.b2;
+    gravity_wall(;hp=hp, hz=hz, t1=t1, t2=t2, t3=t3, b1=b1, b2=b2,
+        model=x.model);
+    return x;
+end
+
+"""
+    orient_model!(model::Wmodel{<:Real})
+Orientará todos los elementos (campo `elm`).
+"""
+function orient_model!(model::Wmodel{<:Real})
+    nod=model.nod;
+    elm=model.elm;
+    cont=1;
+    #recorriendo elementos triangulares
+    for i in 1:model.pbreak
+        key=orient_tri!(nod,elm,cont);
+        #key=0 indica que no se eliminó el elemento y
+        #puede avanzarse a la siguiente ubicación, key=-1 indica que se
+        #eliminó el elemento, cont se mantiene
+        if key==0 cont+=1 end
+    end
+    #actualizando campo pbreak
+    model.pbreak=cont-1;
+    nel=size(elm)[1];
+    #recorriendo elementos cuadrangulares
+    for i in cont:nel
+        key=orient_quad!(nod,elm,cont,model.pbreak);
+        #key=-1 indica que el elemento fue elminado
+        #key=1, se transforma el elemento a triángulo, se elimina el cuadrilátero
+        #pero se agrega un triangulo
+        #no se realizó ningún cambio (key=0).
+        if key==1
+            model.pbreak+=1;
+            cont+=1;
+        elseif key==0;
+            cont+=1;
+        end
+    end
+    return elm;
+end
+
 function wall_forces(model::Wmodel{T}) where {T<:Real}
     nel=size(model.elm)[1];
     #matriz de fuerzas
@@ -101,7 +164,7 @@ end
 
 """
     gravity_wall(;hp::Real, hz::Real, t1::Real, t2::Real, t3::Real,
-        b1::Real,b2::Real)
+        b1::Real,b2::Real,kwargs...)
 Genera una estructura del tipo `Wmodel`, para un muro de gravedad con los
 datos especificados, los datos deben ser ingresados como `keywords`, es decir,
 pueden ingresarse en cualquier orden, pero especificando el nombre la variable,
@@ -122,7 +185,7 @@ por ejemplo:
 
 """
 function gravity_wall(;hp::Real, hz::Real, t1::Real, t2::Real, t3::Real,
-    b1::Real,b2::Real)
+    b1::Real,b2::Real,kwargs...)
     #creando nudos
     nodes=VolatileArray(zeros(1,2));
     push!(nodes,Float64[b1+t2+t1+t3+b2 0]);
@@ -141,7 +204,19 @@ function gravity_wall(;hp::Real, hz::Real, t1::Real, t2::Real, t3::Real,
     push!(elements,[1 2 3 4 1]);#cuadrilátero base (zapata)
     push!(elements,[6 7 10 9 1]);#cuadrilatero central (en pantalla)
 
-    return Wmodel(nodes,elements,2);
+    if haskey(kwargs,:model)
+        model=kwargs[:model];
+        if typeof(model)==Wmodel{Float64}
+            model.pbreak=2;
+            model.nod=nodes;
+            model.elm=elements;
+            return model;
+        else
+            error("El modelo no tiene el tipo esperado");
+        end
+    else
+        return Wmodel(nodes,elements,2);
+    end
 end
 
 function add_field_row(field::VolatileArray{T,2},prop::Array{T,N}) where {

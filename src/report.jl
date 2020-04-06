@@ -1,4 +1,4 @@
-#revisión 0.2.0 27-03-2020, 23:45 Julia1.1.0
+#revisión 0.2.1 06-04-2020, 00:45 Julia1.1.0
 export report;
 function report(mywall::typeIwall)
 hp=mywall.hp;
@@ -11,7 +11,7 @@ b2=mywall.b2;
 grav=mywall.model;
 prop=wall_forces(grav);
 rsf=soil_rankine_forces_rs(grav);
-lsf=soil_rankine_forces_ls(grav);lsf[5]=0;
+lsf=soil_rankine_forces_ls(grav);
 uf=uload_rankine_forces_rs(grav,mywall.q,mywall.alpha);
 factors=check_stab_wt1(grav,prop,rsf,lsf,arsf=uf);
 
@@ -727,7 +727,7 @@ Genera código latex para imprimir una tabla:
     tener el mismo tamaño que el conjunto de `ids` ingresado, o si no se
     ingresaron ids el mismo número de columnas de `rsf`.
 
-    *`kwargs`: secuencia de opciones para generar la tabla como palabras clave
+    *`kwargs`: secuencia de opciones como palabras clave, para generar la tabla
     `precision1=p1`,`precision2=p2`,..., `precisionn=pn` son las precisiones
     correspondientes para el redondeo de la columna `n`.
 El String generado debe insertarse dentro de un entorno tabular en códido latex.
