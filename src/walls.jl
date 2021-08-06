@@ -1,4 +1,4 @@
-#revisión 0.1.6 06-04-2020, 00:45 Julia1.1.0
+#revisión 0.1.7 05-08-2021, 22:05 Julia1.1.0
 export Wmodel, typeIwall, gravity_wall,addsoil!, addmat!,wall_forces,
         soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1,
         uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces,
@@ -85,6 +85,31 @@ function Base.show(io::IO,x::Wmodel{<:Real})
     print(io,"   nod: $(size(x.nod)[1])x$(size(x.nod)[2]) $(typeof(x.nod))\n");
     print(io,"   elm: $(size(x.elm)[1])x$(size(x.elm)[2]) $(typeof(x.elm))\n");
     print(io,"pbreak: $(x.pbreak) $(typeof(x.pbreak))");
+end
+
+function Base.show(io::IO,x::typeIwall)
+    print(io,"$(typeof(x))\n");
+    print(io,"hp=$(x.hp)\n");
+    print(io,"hz=$(x.hz)\n");
+    print(io,"t1=$(x.t1)\n");
+    print(io,"t2=$(x.t2)\n");
+    print(io,"t3=$(x.t3)\n");
+    print(io,"b1=$(x.b1)\n");
+    print(io,"b2=$(x.b2)\n");
+    print(io,"alpha=$(x.alpha)\n");
+    print(io,"D=$(x.D)\n");
+    print(io,"q=$(x.q)\n");
+    print(io,"                      t1
+                     ____            _
+                    /|  |\\           .
+                   / |  | \\          .    relleno
+                  /  |  |  \\        hp
+                 /   |  |   \\        .
+                /    |  |    \\       .
+          b1   /  t2 |  |  t3 \\  b2  .
+         _____/______|__|______\\______
+        |                             |hz
+        |_____________________________|")
 end
 
 function rebuild!(x::typeIwall)
