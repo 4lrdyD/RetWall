@@ -1,4 +1,4 @@
-#revisión 0.2.1 06-04-2020, 00:45 Julia1.1.0
+#revisión 0.2.2 20-11-2021, 00:45 Julia 1.6.4
 export report;
 function report(mywall::typeIwall)
 hp=mywall.hp;
@@ -302,7 +302,6 @@ q_{tal\\acute on}^{pie}&=$(soil_pressure_equation_lcode())\\\\
 q_{pie}&=$(round(factors[4],digits=2))KN/m^2\\\\
 q_{tal\\acute on}&=$(round(factors[5],digits=2))KN/m^2$qps
 \\end{align*}
-
 \\end{document}
 "
 open("prueba1.tex", "w") do f
@@ -310,7 +309,12 @@ open("prueba1.tex", "w") do f
            end
 #run(pipeline(`pdflatex prueba1`,stdout="log.txt",stderr="err.txt"));
 run(`pdflatex prueba1`);
-run(`cmd /c start prueba1.pdf`);
+    if Sys.iswindows()
+        run(`cmd /c start prueba1.pdf`);
+    elseif Sys.islinux()
+        run(`xdg-open prueba1.pdf`)
+    else
+    end
 end
 
 """
