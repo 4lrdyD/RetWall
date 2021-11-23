@@ -1,4 +1,4 @@
-#revisión 0.0.2 25-02-2020, 22:05 Julia1.1.0
+#revisión 0.0.3 22-11-2021, 22:59 Julia1.6.4
 """
     ka_rankine(fi::Real,alpha::Real)
 Calcula el coeficiente de presión activa de Rankine para un
@@ -183,4 +183,39 @@ function kp_rankine(fi::Real,alpha::Real,c::Real,
     #Cara posterior vertical y relleno inclinado
     return ((2*car^2+2*rel*cfr*sfr+sqrt(4*car^2*(car^2-cfr^2)+
         4*rel^2*cfr^2+8*rel*car^2*sfr*cfr))/(cfr^2)-1)*car;
+end
+
+"""
+    controlled_Kh(Aa::Real,Av::Real,d::Real)
+Calcula el coeficiente sísmico de aceleración horizontal `Kh` para un análisis por
+desplazamientos controlados:
+*   `Aa`: Coeficiente que representa la aceleración horizontal pico efectiva.
+*   `Av`: Coeficiente de aceleración que representa la velocidad horizontal pico
+    efectiva.
+*   `d`: el desplazamiento tolerable en pulgadas.
+
+"""
+function controlled_Kh(Aa::Real,Av::Real,d::Real)
+    #validando argumentos
+    if Aa<=0 || Av<=0 || d<=0
+        err1="los argumentos deben ser positivos"
+        error(err1);
+    end
+    return Aa*(.2*Av^2/(Aa*d))^.25;
+end
+
+"""
+    seismic_angle(Kh::Real,Kv::Real)
+Calcula el ángulo sísmico de inercia.
+*   `Kh`: coeficiente sísmico de aceleración horizontal.
+*   `Kv`: coeficiente sísmico de aceleración vertical.
+
+"""
+function seismic_angle(Kh::Real,Kv::Real)
+    #validando argumentos
+    if Kh<0 || Kv<0
+        err1="los argumentos deben ser no negativos"
+        error(err1);
+    end
+    return atand(Kh/(1-Kv));
 end
