@@ -1,4 +1,4 @@
-#revisión 0.2.2 20-11-2021, 00:45 Julia 1.6.4
+#revisión 0.2.3 24-11-2021, 00:18 Julia 1.6.4
 export report;
 function report(mywall::typeIwall)
 hp=mywall.hp;
@@ -11,7 +11,7 @@ b2=mywall.b2;
 grav=mywall.model;
 prop=wall_forces(grav);
 rsf=soil_rankine_forces_rs(grav);
-lsf=soil_rankine_forces_ls(grav);
+lsf=soil_rankine_forces_ls(grav);#lsf[1,5]=0;#para ignorar el momento resistente de la fuerza pasiva
 uf=uload_rankine_forces_rs(grav,mywall.q,mywall.alpha);
 factors=check_stab_wt1(grav,prop,rsf,lsf,arsf=uf);
 
@@ -66,7 +66,7 @@ if pa!=0 pas*="+$(round(pa,digits=2))" end
 #texto o mensaje de verificación Ok!! cuando cumple.
 fsvs=factors[1]>2 ? ">2\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
 fsds=factors[2]>1.5 ? ">1.5\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
-es=factors[3]<B/6 ? "<\\dfrac{B}{2}=\\dfrac{$(round(B,digits=2))}{6}=$(round(B/6,digits=3))" : "";
+es=factors[3]<B/6 ? "<\\dfrac{B}{6}=\\dfrac{$(round(B,digits=2))}{6}=$(round(B/6,digits=3))" : "";
 #revisando si se ingreso la capacidad de carga
 ncol=size(grav.soilprop)[2];
 qa=0;
