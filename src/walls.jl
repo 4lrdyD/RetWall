@@ -1,4 +1,4 @@
-#revisión 0.1.7 05-08-2021, 22:05 Julia1.1.0
+#revisión 0.1.8 25-11-2021, 01:55 Julia1.6.4
 export Wmodel, typeIwall, gravity_wall,addsoil!, addmat!,wall_forces,
         soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1,
         uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces,
@@ -724,7 +724,7 @@ function check_stab_wt1(model::Wmodel{<:Real},wforces::VolatileArray{<:Real,2},
     out[1,1]=Mr/Ma;
 
     #*calculando factor de seguridad contra el deslizamiento
-    #wforces contiene en su cuarta columna, las fuerzas verticales generados
+    #wforces contiene en su cuarta columna, las fuerzas verticales generadas
     #(peso del muro).
     vf=sum(wforces[:,4]);
     #adicionalmente las fuerzas verticales generadas por el empuje del suelo, se
