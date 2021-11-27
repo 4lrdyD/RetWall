@@ -1,4 +1,4 @@
-#revisión 0.1.8 25-11-2021, 01:55 Julia1.6.4
+#revisión 0.1.9 27-11-2021, 00:35 Julia1.6.4
 export Wmodel, typeIwall, gravity_wall,addsoil!, addmat!,wall_forces,
         soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1,
         uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces,
@@ -295,6 +295,17 @@ Devuelve el rango de índices correspondientes a las propiedades agregadas.
 addmat!(model::Wmodel{T},prop::Array{T,N}) where {T<:Real,N}=
     add_field_row(model.matprop,prop);
 
+"""
+    build_rankine_pline(wall::typeIwall)
+Construye la linea de presiones para un análisis por la teoria de empuje de
+suelo de Rankine, la línea se trazará desde la parte más baja del muro (zapata)
+verticalmente hasta intersectar con el suelo, por defecto se considerará
+la parte derecha como la parte posterior del muro (en contacto con el
+terreno), y la parte izquierda la parte frontal (donde se considerará
+empuje pasivo).
+
+Llenara los campos, `pnod`, `plinels` y `pliners` de `wall.model`
+"""
 function build_rankine_pline(wall::typeIwall)
     #la línea se trazará desde la parte más baja del muro (zapata)
     #verticalmente hasta intersectar con el suelo, por defecto se considerará
@@ -321,10 +332,40 @@ function build_rankine_pline(wall::typeIwall)
 
     #obteniendo nudo superior de la linea de empuje pasivo
     merror="Debe ingresarse una profundidad de cimentación (campo D)"
-    wall.D>0 ? maxiy=minix+wall.D : error(merror);
+    wall.D>0 ? maxiy=miny+wall.D : error(merror);
 
     #agregando nudos
     model.pnod=VolatileArray([mindx miny;mindx maxdy;minix miny;minix maxiy]);
+
+    #agregando elementos
+    model.plinels=VolatileArray([4 3 1 2 0]);
+    model.pliners=VolatileArray([2 1 1 0 1]);
+end
+
+"""
+    build_coulomb_pline(wall::typeIwall)
+Construye la linea de presiones para un análisis por la teoria de empuje de
+suelo de Coulomb, la línea se trazará desde la parte más baja del muro (zapata)
+de modo que la línea generada a la derecha del muro, coincida con la línea
+de la cara posterior del muro, por defecto se considerará
+la parte derecha como la parte posterior del muro (en contacto con el
+terreno), y la parte izquierda la parte frontal (donde se considerará
+empuje pasivo).
+
+Llenara los campos, `pnod`, `plinels` y `pliners` de `wall.model`
+"""
+function build_coulomb_pline(wall::typeIwall)
+    model=wall.model;
+    #obteniendo nudos
+    nod=wall.model.nod;
+    #obteniedo el angulo que forma la cara posterior con la vertical
+    angle=atan(wall.t3,wall.hp);
+    #mensaje de error en caso D<0
+    merror="Debe ingresarse una profundidad de cimentación (campo D)"
+
+    #agregando nudos
+    model.pnod=VolatileArray([nod[8,1]+wall.hz*tan(angle) 0;nod[10:10,:];
+                            0 0;0 wall.D>0 ? wall.D : error(merror)]);
 
     #agregando elementos
     model.plinels=VolatileArray([4 3 1 2 0]);
