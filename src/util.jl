@@ -1,4 +1,4 @@
-#revisión 0.0.9 06-04-2020, 00:45 Julia1.1.0
+#revisión 0.1.0 16-12-2021, 01:10 Julia1.6.4
 import LinearAlgebra: norm
 export VolatileArray
 mutable struct VolatileArray{T,N}<:AbstractArray{T,N}
@@ -248,14 +248,16 @@ function Base.Array(x::VolatileArray{T,2}) where {T<:Real}
 end
 
 """
-    VolatileArray(x::Array{T,2}) where {T<:Real}
+    VolatileArray(x::Array{T,2};share::Bool=false) where {T<:Real}
 Convierte un matriz del tipo `Array{T,2}` a una del tipo `VolatileArray{T,2}`,
-se crea una copia de los elementos de la matriz original.
+si `share` es true, la memoria será compartida.
 """
-function VolatileArray(x::Array{T,2}) where {T<:Real}
+function VolatileArray(x::Array{T,2};share::Bool=false) where {T<:Real}
     dims=size(x);
     narr=reshape(x,dims[1]*dims[2]);
-    return VolatileArray(copy(narr),dims[1],dims[2]);
+    out=share==true ? VolatileArray(narr,dims[1],dims[2]) :
+        VolatileArray(copy(narr),dims[1],dims[2]);
+    return out;
 end
 
 """
