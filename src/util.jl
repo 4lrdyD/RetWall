@@ -1,4 +1,4 @@
-#revisión 0.1.0 16-12-2021, 01:10 Julia1.6.4
+#revisión 0.1.1 18-12-2021, 01:35 Julia1.6.4
 import LinearAlgebra: norm
 export VolatileArray
 mutable struct VolatileArray{T,N}<:AbstractArray{T,N}
@@ -137,7 +137,7 @@ function Base.append!(x::VolatileArray{T,2},n::Array{T,N}; dim::Int64=2
         @inbounds append!(x.arr,n);
         x.width+=lx;
     else
-        error("argumnetos invalidos o dimensiones no compatibles")
+        error("argumentos invalidos o dimensiones no compatibles")
     end
     return x;
 end
@@ -220,14 +220,14 @@ function Base.deleteat!(x::VolatileArray{T,2},id::UnitRange{Int64};
     lid=last(id);
     nid=length(id);
 
-    if dim==1 && dimy>=lid && lid>fid
+    if dim==1 && dimy>=lid && lid>=fid
         for i in 1:dimx
             fdr=fid +(i-1)*(dimy-nid);
             ldr=lid +(i-1)*(dimy-nid);
             @inbounds deleteat!(x.arr,fdr:ldr);
         end
         x.height-=nid;
-    elseif dim==2 && dimx>=lid && lid>fid
+    elseif dim==2 && dimx>=lid && lid>=fid
         @inbounds deleteat!(x.arr,(fid-1)*dimy+1:lid*dimy);
         x.width-=nid;
     else
