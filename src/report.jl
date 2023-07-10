@@ -93,12 +93,12 @@ a="
 \\usepackage{pgfplots}
 \\pgfplotsset{compat=newest}
 \\usepgfplotslibrary{units}
-\\usepackage{ifluatex}
-\\ifluatex
 % Para poder acotar elementos
 %ver:
 %https://tex.stackexchange.com/a/180110/203837
 %https://tex.stackexchange.com/a/298345/203837
+\\usepackage{ifluatex}
+\\ifluatex
 \\usepackage{pdftexcmds}
 \\makeatletter
 \\let\\pdfstrcmp\\pdf@strcmp
