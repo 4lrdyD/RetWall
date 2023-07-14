@@ -1,6 +1,6 @@
-#revisión 0.2.3 24-11-2021, 00:18 Julia 1.6.4
+#revisión 0.2.4 13-07-2023, 23:26 Julia 1.6.4
 export report;
-function report(mywall::typeIwall)
+function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
 hz=mywall.hz;
 t1=mywall.t1;
@@ -76,6 +76,16 @@ if ncol>=5
 qps=factors[4]<qa && factors[5]<qa ?
     "<$(round(qa,digits=2))KN/m^2\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" :
     "";
+
+#diseño de refuerzo, se activa mediante la inclusión de la palabra clave design=1
+dsgn=""#salida para cuando se requiere diseño de refuerzo
+if haskey(kwargs,:design)
+    design=kwargs[:design];
+    if design==1
+        dsgn*="\\section{Diseño de refuerzo}";
+    end
+end
+
 a="
 \\documentclass[oneside,spanish]{scrbook}
 \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
@@ -302,6 +312,7 @@ q_{tal\\acute on}^{pie}&=$(soil_pressure_equation_lcode())\\\\
 q_{pie}&=$(round(factors[4],digits=2))KN/m^2\\\\
 q_{tal\\acute on}&=$(round(factors[5],digits=2))KN/m^2$qps
 \\end{align*}
+$(dsgn)
 \\end{document}
 "
 open("prueba1.tex", "w") do f
