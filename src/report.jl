@@ -82,6 +82,25 @@ dsgn=""#salida para cuando se requiere diseño de refuerzo
 if haskey(kwargs,:design)
     design=kwargs[:design];
     if design==1
+        if size(grav.pliners)[1]>1
+            err="Por ahora, el diseño solo está preparado para suelos de solo un estrato";
+            err*=", si se ingresaron más estratos, solo se usará las propiedades";
+            err*=" del primer estrato y por tanto los resultados podrían ser inexactos"
+            @warn err
+        end
+        @inbounds gamma=grav.soilprop[grav.pliners[1,3],3];#peso unitario
+        @inbounds Ka=rsf[1,end];#coeficiente de presión activa
+        Pap=0.5*gamma*hp^2*Ka;#efecto del suelo de relleno
+        Paqp=Ka*hp*mywall.q/cosd(mywall.alpha);#efecto de carga distribuida
+        Patp=Pap+Paqp;#Empuje total
+        zm=(Pap*hp/3+Paqp*hp/2)/Patp;#punto de aplicación;
+        ph=Patp*cosd(mywall.alpha);#componente horizontal
+        pv=Patp*sind(mywall.alpha);#componente verticales
+        fcv=1.7#factor de carga viva
+        if haskey(kwargs,:fcv)#si se ingreso un factor de carga viva diferente
+            fcv=kwargs[:fcv];
+        end
+        Mu=fcv*ph*zm;#momento último
         dsgn*="\\section{Diseño de refuerzo}";
     end
 end
