@@ -1,4 +1,4 @@
-#revisión 0.2.4 13-07-2023, 23:26 Julia 1.6.4
+#revisión 0.2.5 16-07-2023, 23:11 Julia 1.6.4
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
