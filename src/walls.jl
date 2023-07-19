@@ -1,4 +1,4 @@
-#revisión 0.1.9 27-11-2021, 00:35 Julia1.6.4
+#revisión 0.2.0 18-07-2023, 23:54 Julia1.6.4
 export Wmodel, typeIwall, gravity_wall,addsoil!, addmat!,wall_forces,
         soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1,
         uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces,
@@ -289,6 +289,7 @@ addsoil!(model::Wmodel{T},prop::Array{T,N}) where {T<:Real,N}=
 Agrega una o varias propiedades de material al modelo (`model`), las tres
 primeras columnas de `prop` deberán ser en ése orden la resistencia a la
 compresión (MPa), resistencia a la tracción (MPa) y el peso específico (KN/m3).
+Alternativamente puede ingresarse la resistencia a la fluencia fy  (en MPa 4ta columna).
 
 Devuelve el rango de índices correspondientes a las propiedades agregadas.
 """

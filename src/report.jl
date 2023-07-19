@@ -1,4 +1,4 @@
-#revisión 0.2.5 16-07-2023, 23:11 Julia 1.6.4
+#revisión 0.2.6 18-07-2023, 23:53 Julia 1.6.4
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -101,6 +101,7 @@ if haskey(kwargs,:design)
             fcv=kwargs[:fcv];
         end
         Mu=fcv*ph*zm;#momento último
+
         dsgn*="\\section{Diseño de refuerzo}";
     end
 end
