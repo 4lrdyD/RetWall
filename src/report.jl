@@ -1,4 +1,4 @@
-#revisión 0.2.6 18-07-2023, 23:53 Julia 1.6.4
+#revisión 0.2.7 19-07-2023, 23:24 Julia 1.6.4
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -96,11 +96,48 @@ if haskey(kwargs,:design)
         zm=(Pap*hp/3+Paqp*hp/2)/Patp;#punto de aplicación;
         ph=Patp*cosd(mywall.alpha);#componente horizontal
         pv=Patp*sind(mywall.alpha);#componente verticales
+
         fcv=1.7#factor de carga viva
         if haskey(kwargs,:fcv)#si se ingreso un factor de carga viva diferente
             fcv=kwargs[:fcv];
+            if typeof(fcv)<:Real
+                if fcv<0 error("fcv debe ser real positivo") end
+            else
+                error("fcv no es del tipo esperado")
+            end
         end
         Mu=fcv*ph*zm;#momento último
+
+        rp=0.04;#recubrimiento en la pantalla
+        if haskey(kwargs,:rp)
+            rp=kwargs[:rp];
+            if typeof(rp)<:Real
+                if rp<0 error("rp debe ser real positivo") end
+            else
+                error("rp no es del tipo esperado")
+            end
+        end
+
+        rfp_n="\\phi5/8''";#diámetro nominal del refuerzo en la pantalla
+        rfp_d=1.588e-2;#diámetro del refuerzo
+        rfp_a=2e-4;#área del refuerzo
+        if haskey(kwargs,:rlist)
+            rfp=kwargs[:rlist];
+            if typeof(rfp)==Array{Any,2}
+                rfp_n=rfp[1,1];
+                rfp_d=rfp[1,2];
+                rfp_a=rfp[1,3];
+                if typeof(rfp_n)==String && typeof(rfp_d)<:Real && typeof(rfp_a)<:Real
+                    if rfp_d<0 || rfp_a<0 error("diámetro y área de refuerzo deben ser positivos") end
+                else
+                    error("uno o mas componentes de rlist no son del tipo esperado")
+                end
+            else
+                error("rlist no es del tipo esperado")
+            end
+        end
+        h=t1+t2+t3;
+        d=h-rp-rfp_d/2;
 
         dsgn*="\\section{Diseño de refuerzo}";
     end

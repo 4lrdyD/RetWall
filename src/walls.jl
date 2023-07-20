@@ -1,4 +1,4 @@
-#revisión 0.2.0 18-07-2023, 23:54 Julia1.6.4
+#revisión 0.2.1 19-07-2023, 23:25 Julia1.6.4
 export Wmodel, typeIwall, gravity_wall,addsoil!, addmat!,wall_forces,
         soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1,
         uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces,
@@ -277,7 +277,7 @@ columnas de `prop` deberán ser en ése orden el ángulo de fricción por esfuer
 efectivo del suelo en grados sexagesimales, la resistencia no drenada o cohesión
 aparente (Kpa) y el peso unitario del suelo (KN/m3). Alternativamente puede
 ingresarse el ángulo de fricción entre el suelo y el muro (4ta columna) y la
-capacidad portante del terreno (5ta columna).
+capacidad portante del terreno (Kn/m2 5ta columna).
 
 Devuelve el rango de índices correspondientes a las propiedades agregadas.
 """
@@ -288,8 +288,8 @@ addsoil!(model::Wmodel{T},prop::Array{T,N}) where {T<:Real,N}=
     addmat!(model::Wmodel{T},prop::Array{T,N}) where {T<:Real,N}
 Agrega una o varias propiedades de material al modelo (`model`), las tres
 primeras columnas de `prop` deberán ser en ése orden la resistencia a la
-compresión (MPa), resistencia a la tracción (MPa) y el peso específico (KN/m3).
-Alternativamente puede ingresarse la resistencia a la fluencia fy  (en MPa 4ta columna).
+compresión (KPa), resistencia a la tracción (KPa) y el peso específico (KN/m3).
+Alternativamente puede ingresarse la resistencia a la fluencia fy  (en KPa 4ta columna).
 
 Devuelve el rango de índices correspondientes a las propiedades agregadas.
 """
