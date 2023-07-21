@@ -1,4 +1,4 @@
-#revisión 0.2.7 19-07-2023, 23:24 Julia 1.6.4
+#revisión 0.2.8 21-07-2023, 00:31 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -118,7 +118,7 @@ if haskey(kwargs,:design)
             end
         end
 
-        rfp_n="\\phi5/8''";#diámetro nominal del refuerzo en la pantalla
+        rfp_n="\$\\phi5/8''\$";#diámetro nominal del refuerzo en la pantalla
         rfp_d=1.588e-2;#diámetro del refuerzo
         rfp_a=2e-4;#área del refuerzo
         if haskey(kwargs,:rlist)
@@ -138,6 +138,55 @@ if haskey(kwargs,:design)
         end
         h=t1+t2+t3;
         d=h-rp-rfp_d/2;
+
+        phim=0.9;#factor de reducción de resistencia (puede ingresarse como palabra clave)
+        if haskey(kwargs,:phim)
+            phim=kwargs[:phim];
+            if typeof(phim)<:Real
+                if phim<0 error("phim debe ser real positivo") end
+            else
+                error("phim no es del tipo esperado")
+            end
+        end
+
+        #obteniendo fy y fc, las palabras clave fyid y fcid
+        #fyid y fcid son lo indices de material para el acero y el concreto
+        #dentro del campo matprop del modelo, dichos materiales den¿berán contener
+        #la resistencia a la compresión para el concreto, y el límite de fluencia
+        #para el acero.
+        fy=420000;fc=21000;#valores por defecto
+        if haskey(kwargs,:fyid)
+            fyid=kwargs[:fyid];
+            if typeof(fyid)==Int64
+                if fyid<0 error("fyid debe ser entero positivo") end
+                fy=grav.matprop[fyid,4];
+            else
+                error("fyid no es del tipo esperado")
+            end
+        end
+
+        if haskey(kwargs,:fcid)
+            fcid=kwargs[:fcid];
+            if typeof(fcid)==Int64
+                if fcid<0 error("fcid debe ser entero positivo") end
+                fc=grav.matprop[fcid,1];
+            else
+                error("fcid no es del tipo esperado")
+            end
+        end
+
+        #iteración para conseguir el área de refuerzo
+        a=d/5;#valor inicial de la profundidad de la zona en compresión
+        As=long_reinforcement_area(Mu,phim,fy,d,a);
+        while a-compression_zone_depth(As,fy,fc,1)>1e-6
+            a=compression_zone_depth(As,fy,fc,1);
+            As=long_reinforcement_area(Mu,phim,fy,d,a);
+        end
+
+        #elección del área de refuerzo
+        Asmin=0.0018*h;
+        if As<Asmin As=Asmin end
+
 
         dsgn*="\\section{Diseño de refuerzo}";
     end
