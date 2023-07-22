@@ -1,4 +1,4 @@
-#revisión 0.2.8 21-07-2023, 00:31 Julia 1.9.2
+#revisión 0.2.9 22-07-2023, 00:47 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -118,7 +118,7 @@ if haskey(kwargs,:design)
             end
         end
 
-        rfp_n="\$\\phi5/8''\$";#diámetro nominal del refuerzo en la pantalla
+        rfp_n="\\phi5/8''";#diámetro nominal del refuerzo en la pantalla
         rfp_d=1.588e-2;#diámetro del refuerzo
         rfp_a=2e-4;#área del refuerzo
         if haskey(kwargs,:rlist)
@@ -187,8 +187,25 @@ if haskey(kwargs,:design)
         Asmin=0.0018*h;
         if As<Asmin As=Asmin end
 
-
-        dsgn*="\\section{Diseño de refuerzo}";
+        dsgn*="\\section{Diseño de refuerzo}
+        \\subsection{Pantalla}
+        \\begin{align*}
+        H_p&=$hp m &\\Rightarrow \\textit{Altura de la pantalla}\\\\
+        P_{ap}&=$(round(Pap,digits=2)) KN/m &\\Rightarrow \\textit{efecto del suelo de relleno}\\\\
+        P_{aqp}&=$(round(Paqp,digits=2)) KN/m &\\Rightarrow \\textit{efecto de la carga distribuida}\\\\
+        P_{atp}&=$(round(Patp,digits=2)) KN/m &\\Rightarrow \\textit{empuje total}\\\\
+        \\overline{z}&=$(round(zm,digits=2)) m &\\Rightarrow \\textit{punto de aplicación}\\\\
+        P_h&=$(round(ph,digits=2)) KN/m &\\Rightarrow \\textit{Componente horizontal}\\\\
+        P_v&=$(round(pv,digits=2)) KN/m &\\Rightarrow \\textit{Componente vertical}\\\\
+        M_u&=$(round(Mu,digits=2)) KN.m/m &\\Rightarrow \\textit{Momento último}\\\\
+        r&=$(round(rp,digits=2)) m &\\Rightarrow \\textit{Recubrimiento}\\\\
+        \\phi_r&=$(rfp_n) &\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
+        d&=$(round(d,digits=2)) m &\\Rightarrow \\textit{Peralte efectivo}\\\\
+        a&=$(round(a,digits=4)) m &\\Rightarrow \\textit{Profundidad de la zona en compresión}\\\\
+        A_s&=$(round(As,digits=6)) m^2 &\\Rightarrow \\textit{área de refuerzo}\\\\
+        &$(rfp_n)@$(trunc(rfp_a*100/As)/100) m&\\Rightarrow \\textit{distribución final}\\\\
+        \\end{align*}
+        ";
     end
 end
 
