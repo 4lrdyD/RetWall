@@ -1,4 +1,4 @@
-#revisión 0.2.9 22-07-2023, 00:47 Julia 1.9.2
+#revisión 0.3.0 22-07-2023, 23:10 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -77,6 +77,7 @@ qps=factors[4]<qa && factors[5]<qa ?
     "<$(round(qa,digits=2))KN/m^2\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" :
     "";
 
+#DISEÑO_________________________________________________________________________
 #diseño de refuerzo, se activa mediante la inclusión de la palabra clave design=1
 dsgn=""#salida para cuando se requiere diseño de refuerzo
 if haskey(kwargs,:design)
@@ -178,7 +179,7 @@ if haskey(kwargs,:design)
         #iteración para conseguir el área de refuerzo
         a=d/5;#valor inicial de la profundidad de la zona en compresión
         As=long_reinforcement_area(Mu,phim,fy,d,a);
-        while a-compression_zone_depth(As,fy,fc,1)>1e-6
+        while abs(a-compression_zone_depth(As,fy,fc,1))>1e-6
             a=compression_zone_depth(As,fy,fc,1);
             As=long_reinforcement_area(Mu,phim,fy,d,a);
         end
@@ -206,6 +207,77 @@ if haskey(kwargs,:design)
         &$(rfp_n)@$(trunc(rfp_a*100/As)/100) m&\\Rightarrow \\textit{distribución final}\\\\
         \\end{align*}
         ";
+        #LONGITUD DE DESARROLLO__________________________________________________
+        #se buscará el punto donde el momento sea exactamente igual a la mitad del
+        #momento último
+        Mus2=Mu/2;
+        hm=hp/2#altura inicial desde donde se iniciará la iteración
+        Pam=0.5*Ka*gamma*hm^2;#efecto del suelo de relleno
+        Paqm=Ka*hm*mywall.q/cosd(mywall.alpha);#efecto de carga distribuida
+
+        while abs(hm-(((Mus2/fcv)-(Paqm*hm/2))/(Pam/(3*hm^2)))^(1/3))>1e-7
+            hm=(((Mus2/fcv)-(Paqm*hm/2))/(Pam/(3*hm^2)))^(1/3);
+            Pam=0.5*Ka*gamma*hm^2;#efecto del suelo de relleno
+            Paqm=Ka*hm*mywall.q/cosd(mywall.alpha);#efecto de carga distribuida
+        end
+        Patm=Pam+Paqm;#empuje total
+        zm=(Pam*hm/3+Paqm*hm/2)/Patm;#punto de aplicación
+        ph=Patm*cosd(mywall.alpha);
+        pv=Patm*sind(mywall.alpha);
+        Mm=Patm*zm*fcv;
+        dsgn*="\\subsubsection{Longitud de desarrollo}
+        Se buscó por iteración el punto donde el momento sea exactamente la mitad de \$M_u\$\\\\
+        \\begin{align*}
+        M_u/2&=$(round(Mus2,digits=2)) KN/m&\\Rightarrow \\textit{}\\\\
+        h_m&=$(round(hm,digits=2)) m&\\Rightarrow \\textit{Medida desde la parte superior de la pantalla}\\\\
+        P_{am}&=$(round(Pam,digits=2)) KN/m &\\Rightarrow \\textit{efecto del suelo de relleno}\\\\
+        P_{aqm}&=$(round(Paqm,digits=2)) KN/m &\\Rightarrow \\textit{efecto de la carga distribuida}\\\\
+        P_{atm}&=$(round(Patm,digits=2)) KN/m &\\Rightarrow \\textit{empuje total}\\\\
+        \\overline{z}&=$(round(zm,digits=2)) m &\\Rightarrow \\textit{punto de aplicación}\\\\
+        P_h&=$(round(ph,digits=2)) KN/m &\\Rightarrow \\textit{Componente horizontal}\\\\
+        P_v&=$(round(pv,digits=2)) KN/m &\\Rightarrow \\textit{Componente vertical}\\\\
+        h_c&=$(round(hp-hm,digits=2)) m &\\Rightarrow \\textit{Medida desde la base de la pantalla}\\\\
+        L_c&=$(round(hp-hm+d,digits=2)) m &\\Rightarrow h_c+d\\\\
+        L_{c_{usar}}&=$(ceil((hp-hm+d)*20)/20) m &\\Rightarrow \\textit{Longitud final}\\\\%elegimos el mayor multiplo de 0.05
+        \\end{align*}
+        "
+
+        #VERIFICACIÓN POR CORTE_________________________________________________
+        hc=hp-d;#profundidad a la que se verifica por corte
+        Pac=0.5*Ka*gamma*hc^2;#efecto del suelo de relleno
+        Paqc=Ka*hc*mywall.q/cosd(mywall.alpha);#efecto de la carga distribuida
+        Patc=Pac+Paqc;
+        ph=Patc*cosd(mywall.alpha);#componente horizontal
+        pv=Patc*sind(mywall.alpha);#componente vertical
+        Vdu=fcv*ph;
+
+        phic=0.85;#factor de reducción de resistencia (puede ingresarse como palabra clave)
+        if haskey(kwargs,:phic)
+            phic=kwargs[:phic];
+            if typeof(phic)<:Real
+                if phic<0 error("phic debe ser real positivo") end
+            else
+                error("phic no es del tipo esperado")
+            end
+        end
+        Vu=Vdu/phic;#corte último
+        Vc=5.25*d*sqrt(fc);#reistencia al corte
+        Vce=Vc*2/3;#resistencia al corte reducida
+        check=Vce>Vu ? "\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
+        dsgn*="\\subsubsection{Verificación por corte}
+        \\begin{align*}
+        h_c&=$(round(hc,digits=2)) m&\\Rightarrow \\textit{profundidad a la que se verifica el corte }h_p-d\\\\
+        P_{ac}&=$(round(Pac,digits=2)) KN/m&\\Rightarrow \\textit{efecto del suelo de relleno}\\\\
+        h_{aqc}&=$(round(Paqc,digits=2)) KN/m&\\Rightarrow \\textit{efecto de la carga distribuida}\\\\
+        P_{atc}&=$(round(Patc,digits=2)) KN/m &\\Rightarrow \\textit{empuje total}\\\\
+        P_h&=$(round(ph,digits=2)) KN/m &\\Rightarrow \\textit{Componente horizontal}\\\\
+        P_v&=$(round(pv,digits=2)) KN/m &\\Rightarrow \\textit{Componente vertical}\\\\
+        V_{du}&=$(round(Vdu,digits=2)) KN/m &\\Rightarrow \\textit{Corte mayorado}\\\\
+        V_{u}&=$(round(Vu,digits=2)) KN/m &\\Rightarrow \\textit{Corte último } V_{du}/\\phi\\\\
+        V_{c}&=$(round(Vc,digits=2)) KN/m &\\Rightarrow \\textit{Resistencia de la sección } 5.25bd\\sqrt{f'c}\\\\
+        V_{ce}&=$(round(Vce,digits=2)) KN/m $check &\\Rightarrow \\textit{Resistencia reducida}\\\\
+        \\end{align*}
+        "
     end
 end
 
@@ -320,7 +392,7 @@ a="
     }
 
 \\makeatother
-
+\\setcounter{secnumdepth}{3}
 \\begin{document}
 \\chapter{Reporte de cálculo del muro H=$(hp+hz) m}
 \\section{Geometría del muro}
