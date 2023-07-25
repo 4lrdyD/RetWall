@@ -1,4 +1,4 @@
-#revisión 0.3.0 22-07-2023, 23:10 Julia 1.9.2
+#revisión 0.3.1 25-07-2023, 00:30 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -277,6 +277,149 @@ if haskey(kwargs,:design)
         V_{c}&=$(round(Vc,digits=2)) KN/m &\\Rightarrow \\textit{Resistencia de la sección } 5.25bd\\sqrt{f'c}\\\\
         V_{ce}&=$(round(Vce,digits=2)) KN/m $check &\\Rightarrow \\textit{Resistencia reducida}\\\\
         \\end{align*}
+        "
+        #ACERO DE TEMPERATURA___________________________________________________
+        #Arriba
+        Astu=0.002*(t1+(t2+t3)/3);
+        Astm=0.002*(t1+2*(t2+t3)/3);
+        Astd=0.002*(t1+t2+t3);
+        rfpf_n="\\phi1/2''";#diámetro nominal del acero de temperatura frontal
+        rfpf_d=1.27e-2;#diámetro del refuerzo
+        rfpf_a=1.29e-4;#área del refuerzo
+        rfpp_n="\\phi3/8''";#diámetro nominal del acero de temperatura posterior
+        rfpp_d=0.953e-2;#diámetro del refuerzo
+        rfpp_a=0.71e-4;#área del refuerzo
+        if haskey(kwargs,:rlist)
+            rfp=kwargs[:rlist];
+            if typeof(rfp)==Array{Any,2}
+                rfpf_n=rfp[3,1];
+                rfpf_d=rfp[3,2];
+                rfpf_a=rfp[3,3];
+                rfpp_n=rfp[4,1];
+                rfpp_d=rfp[4,2];
+                rfpp_a=rfp[4,3];
+                if typeof(rfpf_n)==String && typeof(rfpf_d)<:Real && typeof(rfpf_a)<:Real
+                    if rfpf_d<0 || rfpf_a<0 error("diámetro y área de refuerzo deben ser positivos") end
+                else
+                    error("uno o mas componentes de rlist no son del tipo esperado")
+                end
+
+                if typeof(rfpp_n)==String && typeof(rfpp_d)<:Real && typeof(rfpp_a)<:Real
+                    if rfpp_d<0 || rfpp_a<0 error("diámetro y área de refuerzo deben ser positivos") end
+                else
+                    error("uno o mas componentes de rlist no son del tipo esperado")
+                end
+            else
+                error("rlist no es del tipo esperado")
+            end
+        end
+        dsgn*="\\subsubsection{Acero horizontal-temperatura}~
+        \\begin{table*}[h]
+        \\parbox{.3\\linewidth}{
+        \\centering
+        \\begin{tabular}{llc}
+        \\textbf{Arriba}&&\\\\
+        \$A_{st}\$&$(round(Astu,digits=6)) m\$^2\$&\\\\
+        \$2/3A_{st}\$&$(round(Astu*2/3,digits=6)) m\$^2\$&\\\\
+        \$\\phi_r\$&\$$rfpf_n\$&\\\\
+        S&$(trunc(rfpf_a/(Astu*2/3)*100)/100) m&\\\\
+        &&\\\\
+        \$1/3A_{st}\$&$(round(Astu*1/3,digits=6)) m\$^2\$&\\\\
+        \$\\phi_r\$&\$$rfpp_n\$&\\\\
+        S&$(trunc(rfpp_a/(Astu*1/3)*100)/100) m&\\\\
+        \\end{tabular}
+        }
+        \\hfill
+        \\parbox{.3\\linewidth}{
+        \\centering
+        \\begin{tabular}{llc}
+        \\textbf{Intermedio}&&\\\\
+        \$A_{st}\$&$(round(Astm,digits=6)) m\$^2\$&\\\\
+        \$2/3A_{st}\$&$(round(Astm*2/3,digits=6)) m\$^2\$&\\\\
+        \$\\phi_r\$&\$$rfpf_n\$&\\\\
+        S&$(trunc(rfpf_a/(Astm*2/3)*100)/100) m&\\\\
+        &&\\\\
+        \$1/3A_{st}\$&$(round(Astm*1/3,digits=6)) m\$^2\$&\\\\
+        \$\\phi_r\$&\$$rfpp_n\$&\\\\
+        S&$(trunc(rfpp_a/(Astm*1/3)*100)/100) m&\\\\
+        \\end{tabular}
+        }
+        \\hfill
+        \\parbox{.3\\linewidth}{
+        \\centering
+        \\begin{tabular}{llc}
+        \\textbf{Abajo}&&\\\\
+        \$A_{st}\$&$(round(Astd,digits=6)) m\$^2\$&\\\\
+        \$2/3A_{st}\$&$(round(Astd*2/3,digits=6)) m\$^2\$&\\\\
+        \$\\phi_r\$&\$$rfpf_n\$&\\\\
+        S&$(trunc(rfpf_a/(Astd*2/3)*100)/100) m&\\\\
+        &&\\\\
+        \$1/3A_{st}\$&$(round(Astd*1/3,digits=6)) m\$^2\$&\\\\
+        \$\\phi_r\$&\$$rfpp_n\$&\\\\
+        S&$(trunc(rfpp_a/(Astd*1/3)*100)/100) m&\\\\
+        \\end{tabular}
+        }
+        \\end{table*}
+        "
+        #DISEÑO DE LA ZAPATA___________________________________________________
+        Ws=gamma*hp;#presión del terreno sobre la zapata
+        gammac=24;#peso específico del Concreto
+        if haskey(kwargs,:fcid)
+            fcid=kwargs[:fcid];
+            if typeof(fcid)==Int64
+                if fcid<0 error("fcid debe ser entero positivo") end
+                gammac=grav.matprop[fcid,3];
+            else
+                error("fcid no es del tipo esperado")
+            end
+        end
+        Wpp=gammac*hz;#presión por peso propio
+        #Zapata frontal.........
+        Wumax=fcv*factors[4]-0.9*Wpp;#factors[4]: presión en el pie de la zapata
+        Muzf=0.5*Wumax*b1;
+
+        rz=0.075;#recubrimiento en la zapata
+        if haskey(kwargs,:rz)
+            rz=kwargs[:rz];
+            if typeof(rz)<:Real
+                if rz<0 error("rz debe ser real positivo") end
+            else
+                error("rz no es del tipo esperado")
+            end
+        end
+
+        rfpz_n="\\phi5/8''";#diámetro nominal del refuerzo en la zapata
+        rfpz_d=1.588e-2;#diámetro del refuerzo
+        rfpz_a=2e-4;#área del refuerzo
+        if haskey(kwargs,:rlist)
+            rfp=kwargs[:rlist];
+            if typeof(rfp)==Array{Any,2}
+                rfpz_n=rfp[2,1];
+                rfpz_d=rfp[2,2];
+                rfpz_a=rfp[2,3];
+                if typeof(rfpz_n)==String && typeof(rfpz_d)<:Real && typeof(rfpz_a)<:Real
+                    if rfpz_d<0 || rfpz_a<0 error("diámetro y área de refuerzo deben ser positivos") end
+                else
+                    error("uno o mas componentes de rlist no son del tipo esperado")
+                end
+            else
+                error("rlist no es del tipo esperado")
+            end
+        end
+
+        dz=hz-rz-rfpz_d/2;
+        #iteración para conseguir el área de refuerzo
+        az=dz/5;#valor inicial de la profundidad de la zona en compresión
+        Aszf=long_reinforcement_area(Muzf,phim,fy,dz,az);
+        while abs(az-compression_zone_depth(Aszf,fy,fc,1))>1e-6
+            az=compression_zone_depth(Aszf,fy,fc,1);
+            Aszf=long_reinforcement_area(Muzf,phim,fy,dz,az);
+        end
+
+        #elección del área de refuerzo
+        Aszfmin=0.0018*hz;
+        if Aszf<Aszfmin Aszf=Aszfmin end
+        dsgn*="\\subsection{Zapata}
         "
     end
 end
