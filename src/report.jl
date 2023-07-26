@@ -1,4 +1,4 @@
-#revisión 0.3.1 25-07-2023, 00:30 Julia 1.9.2
+#revisión 0.3.2 26-07-2023, 00:35 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -11,7 +11,7 @@ b2=mywall.b2;
 grav=mywall.model;
 prop=wall_forces(grav);
 rsf=soil_rankine_forces_rs(grav);
-lsf=soil_rankine_forces_ls(grav);#lsf[1,5]=0;#para ignorar el momento resistente de la fuerza pasiva
+lsf=soil_rankine_forces_ls(grav);lsf[1,5]=0;#para ignorar el momento resistente de la fuerza pasiva
 uf=uload_rankine_forces_rs(grav,mywall.q,mywall.alpha);
 factors=check_stab_wt1(grav,prop,rsf,lsf,arsf=uf);
 
@@ -199,7 +199,7 @@ if haskey(kwargs,:design)
         P_h&=$(round(ph,digits=2)) KN/m &\\Rightarrow \\textit{Componente horizontal}\\\\
         P_v&=$(round(pv,digits=2)) KN/m &\\Rightarrow \\textit{Componente vertical}\\\\
         M_u&=$(round(Mu,digits=2)) KN.m/m &\\Rightarrow \\textit{Momento último}\\\\
-        r&=$(round(rp,digits=2)) m &\\Rightarrow \\textit{Recubrimiento}\\\\
+        r&=$(round(rp,digits=3)) m &\\Rightarrow \\textit{Recubrimiento}\\\\
         \\phi_r&=$(rfp_n) &\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
         d&=$(round(d,digits=2)) m &\\Rightarrow \\textit{Peralte efectivo}\\\\
         a&=$(round(a,digits=4)) m &\\Rightarrow \\textit{Profundidad de la zona en compresión}\\\\
@@ -228,7 +228,7 @@ if haskey(kwargs,:design)
         dsgn*="\\subsubsection{Longitud de desarrollo}
         Se buscó por iteración el punto donde el momento sea exactamente la mitad de \$M_u\$\\\\
         \\begin{align*}
-        M_u/2&=$(round(Mus2,digits=2)) KN/m&\\Rightarrow \\textit{}\\\\
+        M_u/2&=$(round(Mus2,digits=2)) KN.m/m&\\Rightarrow \\textit{}\\\\
         h_m&=$(round(hm,digits=2)) m&\\Rightarrow \\textit{Medida desde la parte superior de la pantalla}\\\\
         P_{am}&=$(round(Pam,digits=2)) KN/m &\\Rightarrow \\textit{efecto del suelo de relleno}\\\\
         P_{aqm}&=$(round(Paqm,digits=2)) KN/m &\\Rightarrow \\textit{efecto de la carga distribuida}\\\\
@@ -313,8 +313,8 @@ if haskey(kwargs,:design)
                 error("rlist no es del tipo esperado")
             end
         end
-        dsgn*="\\subsubsection{Acero horizontal-temperatura}~
-        \\begin{table*}[h]
+        dsgn*="\\subsubsection{Acero horizontal-temperatura}
+        \\begin{table}[H]
         \\parbox{.3\\linewidth}{
         \\centering
         \\begin{tabular}{llc}
@@ -359,7 +359,7 @@ if haskey(kwargs,:design)
         S&$(trunc(rfpp_a/(Astd*1/3)*100)/100) m&\\\\
         \\end{tabular}
         }
-        \\end{table*}
+        \\end{table}
         "
         #DISEÑO DE LA ZAPATA___________________________________________________
         Ws=gamma*hp;#presión del terreno sobre la zapata
@@ -376,7 +376,7 @@ if haskey(kwargs,:design)
         Wpp=gammac*hz;#presión por peso propio
         #Zapata frontal.........
         Wumax=fcv*factors[4]-0.9*Wpp;#factors[4]: presión en el pie de la zapata
-        Muzf=0.5*Wumax*b1;
+        Muzf=0.5*Wumax*b1^2;
 
         rz=0.075;#recubrimiento en la zapata
         if haskey(kwargs,:rz)
@@ -419,7 +419,51 @@ if haskey(kwargs,:design)
         #elección del área de refuerzo
         Aszfmin=0.0018*hz;
         if Aszf<Aszfmin Aszf=Aszfmin end
+
         dsgn*="\\subsection{Zapata}
+        \\begin{align*}
+        W_s&=$(round(Ws,digits=2)) KN/m/m&\\Rightarrow \\textit{Presión del terreno sobre la zapata}\\\\
+        W_{pp}&=$(round(Wpp,digits=2)) KN/m/m&\\Rightarrow \\textit{presión por peso propio}\\\\
+        \\end{align*}
+        \\subsubsection{Zapata frontal}
+        \\begin{align*}
+        W_{\\text{umáx}}&=$(round(Wumax,digits=2)) KN/m/m&\\Rightarrow \\textit{Presión última}\\\\
+        M_{u}&=$(round(Muzf,digits=2)) KN.m/m&\\Rightarrow \\textit{Momento último}\\\\
+        \\phi_r&=$rfpz_n &\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
+        r&=$(round(rz,digits=3)) m &\\Rightarrow \\textit{Recubrimiento}\\\\
+        d&=$(round(dz,digits=2)) m &\\Rightarrow \\textit{Peralte efectivo}\\\\
+        a&=$(round(az,digits=4)) m &\\Rightarrow \\textit{Profundidad de la zona en compresión}\\\\
+        A_s&=$(round(Aszf,digits=6)) m^2 &\\Rightarrow \\textit{Área de refuerzo}\\\\
+        &$(rfpz_n)@$(trunc(rfpz_a*100/Aszf)/100) m&\\Rightarrow \\textit{distribución final}\\\\
+        \\end{align*}
+        "
+        #Zapata posterior
+        #dibujo ilustrativo
+        dsgn*="\\begin{tikzpicture}[scale=2]
+        \\draw (0,0)--++(-90:1)--++(180:0.9)--++(-90:0.5)--++(0:3.7)--++(90:0.5)
+        --++(180:2.3)--(0.4,0);
+        \\draw (-0.1,0)--(0.1,0)--++(90:0.2)--(0.3,-0.2)--(0.3,0)--(0.5,0);
+        \\draw (-0.9,-1.7)--(2.8,-1.7)--(2.8,-2)--(-0.9,-2.5)--cycle;
+        \\draw [dashed] (2.8,-2)--(-0.9,-2);
+        \\foreach \\x in {0,0.1,0.2,...,1}
+        {
+        \\draw [->](0.5+\\x*2.3,-0.7)--(0.5+\\x*2.3,-1);
+        }
+        \\foreach \\x in {0,0.1,0.2,...,1}
+        {
+        \\draw [->](0.5+\\x*2.3,-1.15)--(0.5+\\x*2.3,-1.35);
+        }
+        \\draw (2,-0.7) node[above]{\$W_s\$};
+        \\draw (0.5,-1.25) node[left]{\$W_{pp}\$};
+        \\draw (2.8,-2) node[right]{\$q_{\\text{talón}}\$};
+        \\draw (-0.9,-2.5) node[left]{\$q_{\\text{pie}}\$};
+        \\draw [->](0.5,-2.3108)--(0.5,-2);
+        \\draw [->](1,-2.2432)--(1,-2);
+        \\draw (0.5,-2.15) node[left]{\$q_b\$};
+        \\draw (1,-2.12) node[left]{\$q_d\$};
+        \\Cote[0.1cm] {(0.5,-1.7)}{(1,-1.7)}{\\tiny{\$d\$}}[
+            Cote node/.append style={below}];
+        \\end{tikzpicture}
         "
     end
 end
