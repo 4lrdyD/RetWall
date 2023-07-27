@@ -1,4 +1,4 @@
-#revisión 0.3.2 26-07-2023, 00:35 Julia 1.9.2
+#revisión 0.3.3 27-07-2023, 00:00 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -374,7 +374,7 @@ if haskey(kwargs,:design)
             end
         end
         Wpp=gammac*hz;#presión por peso propio
-        #Zapata frontal.........
+        #Zapata frontal.........................................................
         Wumax=fcv*factors[4]-0.9*Wpp;#factors[4]: presión en el pie de la zapata
         Muzf=0.5*Wumax*b1^2;
 
@@ -421,25 +421,7 @@ if haskey(kwargs,:design)
         if Aszf<Aszfmin Aszf=Aszfmin end
 
         dsgn*="\\subsection{Zapata}
-        \\begin{align*}
-        W_s&=$(round(Ws,digits=2)) KN/m/m&\\Rightarrow \\textit{Presión del terreno sobre la zapata}\\\\
-        W_{pp}&=$(round(Wpp,digits=2)) KN/m/m&\\Rightarrow \\textit{presión por peso propio}\\\\
-        \\end{align*}
-        \\subsubsection{Zapata frontal}
-        \\begin{align*}
-        W_{\\text{umáx}}&=$(round(Wumax,digits=2)) KN/m/m&\\Rightarrow \\textit{Presión última}\\\\
-        M_{u}&=$(round(Muzf,digits=2)) KN.m/m&\\Rightarrow \\textit{Momento último}\\\\
-        \\phi_r&=$rfpz_n &\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
-        r&=$(round(rz,digits=3)) m &\\Rightarrow \\textit{Recubrimiento}\\\\
-        d&=$(round(dz,digits=2)) m &\\Rightarrow \\textit{Peralte efectivo}\\\\
-        a&=$(round(az,digits=4)) m &\\Rightarrow \\textit{Profundidad de la zona en compresión}\\\\
-        A_s&=$(round(Aszf,digits=6)) m^2 &\\Rightarrow \\textit{Área de refuerzo}\\\\
-        &$(rfpz_n)@$(trunc(rfpz_a*100/Aszf)/100) m&\\Rightarrow \\textit{distribución final}\\\\
-        \\end{align*}
-        "
-        #Zapata posterior
-        #dibujo ilustrativo
-        dsgn*="\\begin{tikzpicture}[scale=2]
+        \\begin{tikzpicture}[scale=2]%dibujo ilustrativo
         \\draw (0,0)--++(-90:1)--++(180:0.9)--++(-90:0.5)--++(0:3.7)--++(90:0.5)
         --++(180:2.3)--(0.4,0);
         \\draw (-0.1,0)--(0.1,0)--++(90:0.2)--(0.3,-0.2)--(0.3,0)--(0.5,0);
@@ -464,7 +446,92 @@ if haskey(kwargs,:design)
         \\Cote[0.1cm] {(0.5,-1.7)}{(1,-1.7)}{\\tiny{\$d\$}}[
             Cote node/.append style={below}];
         \\end{tikzpicture}
+        \\begin{align*}
+        W_s&=$(round(Ws,digits=2)) KN/m/m&\\Rightarrow \\textit{Presión del terreno sobre la zapata}\\\\
+        W_{pp}&=$(round(Wpp,digits=2)) KN/m/m&\\Rightarrow \\textit{presión por peso propio}\\\\
+        \\end{align*}
+        \\subsubsection{Zapata frontal}
+        \\begin{align*}
+        W_{\\text{umáx}}&=$(round(Wumax,digits=2)) KN/m/m&\\Rightarrow \\textit{Presión última}\\\\
+        M_{u}&=$(round(Muzf,digits=2)) KN.m/m&\\Rightarrow \\textit{Momento último}\\\\
+        \\phi_r&=$rfpz_n &\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
+        r&=$(round(rz,digits=3)) m &\\Rightarrow \\textit{Recubrimiento}\\\\
+        d&=$(round(dz,digits=2)) m &\\Rightarrow \\textit{Peralte efectivo}\\\\
+        a&=$(round(az,digits=4)) m &\\Rightarrow \\textit{Profundidad de la zona en compresión}\\\\
+        A_s&=$(round(Aszf,digits=6)) m^2 &\\Rightarrow \\textit{Área de refuerzo}\\\\
+        &$(rfpz_n)@$(trunc(rfpz_a*100/Aszf)/100) m&\\Rightarrow \\textit{distribución final}\\\\
+        \\end{align*}
         "
+        #Zapata posterior.......................................................
+        fcm=1.4;#factor de carga muerta
+        if haskey(kwargs,:fcm)#si se ingreso un factor de carga muerta diferente
+            fcm=kwargs[:fcm];
+            if typeof(fcm)<:Real
+                if fcm<0 error("fcm debe ser real positivo") end
+            else
+                error("fcm no es del tipo esperado")
+            end
+        end
+        qb=fcm*(factors[4]-factors[5])*b2/(b1+t2+t1+t3+b2);
+        Wur=fcm*(Ws+Wpp-factors[5]);
+        Muzp=Wur*b2^2/2-qb*b2^2/6;#momento último
+        az=dz/5;#valor inicial de la profundidad de la zona en compresión
+        Aszp=long_reinforcement_area(Muzp,phim,fy,dz,az);
+        while abs(az-compression_zone_depth(Aszp,fy,fc,1))>1e-6
+            az=compression_zone_depth(Aszp,fy,fc,1);
+            Aszp=long_reinforcement_area(Muzp,phim,fy,dz,az);
+        end
+        #elección del área de refuerzo
+        Aszpmin=0.0018*hz;
+        if Aszp<Aszpmin Aszp=Aszpmin end
+
+        dsgn*="\\subsubsection{Zapata posterior}
+        \\begin{align*}
+        q_b&=$(round(qb,digits=2)) KN/m/m&\\Rightarrow \\textit{Ver figura de arriba}\\\\
+        W_{ur}&=$(round(Wur,digits=2)) KN/m/m&\\Rightarrow W_{ur}=fcm(W_s+W_{pp}-q_{\\text{talón}})\\\\
+        M_{u}&=$(round(Muzp,digits=2)) KN.m/m&\\Rightarrow \\textit{Momento último}\\\\
+        \\phi_r&=$rfpz_n &\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
+        r&=$(round(rz,digits=3)) m &\\Rightarrow \\textit{Recubrimiento}\\\\
+        d&=$(round(dz,digits=2)) m &\\Rightarrow \\textit{Peralte efectivo}\\\\
+        a&=$(round(az,digits=4)) m &\\Rightarrow \\textit{Profundidad de la zona en compresión}\\\\
+        A_s&=$(round(Aszp,digits=6)) m^2 &\\Rightarrow \\textit{Área de refuerzo}\\\\
+        &$(rfpz_n)@$(trunc(rfpz_a*100/Aszp)/100) m&\\Rightarrow \\textit{distribución final}\\\\
+        \\end{align*}
+        "
+        #Verificación a cortante
+        qd=fcm*(factors[4]-factors[5])*(b2-dz)/(b1+t2+t1+t3+b2);
+        Vdu=fcm*(Ws+Wpp-factors[5])*(b2-dz)-0.5*qd*(b2-dz);
+        Vn=Vdu/phic;
+        Vc=5.25*dz*sqrt(fc);#reistencia al corte
+        check=Vc>Vn ? "\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
+
+        dsgn*="\\subsubsection{Verificación por corte}
+        \\begin{align*}
+        q_d&=$(round(qd,digits=2)) m&\\Rightarrow \\textit{Ver figura de arriba}\\\\
+        V_{du}&=$(round(Vdu,digits=2)) KN/m &\\Rightarrow \\textit{Corte mayorado}\\\\
+        V_{u}&=$(round(Vn,digits=2)) KN/m &\\Rightarrow \\textit{Corte último } V_{du}/\\phi\\\\
+        V_{c}&=$(round(Vc,digits=2)) KN/m $check&\\Rightarrow \\textit{Resistencia de la sección } 5.25bd\\sqrt{f'c}\\\\
+        \\end{align*}
+        "
+        #Refuerzo transversal-temperatura
+        dsgn*="\\subsubsection{Refuerzo transversal-temperatura}
+        \\begin{align*}
+        A_{s-temp}&=$(round(0.0018*hz,digits=6)) m^2&\\Rightarrow \\textit{Refuerzo transversal}\\\\
+        \\phi_r &=$rfpz_n&\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
+        S &=$(trunc(rfpz_a/(0.0018*hz)*100)/100) m&\\Rightarrow \\textit{Separación}\\\\
+        \\end{align*}
+        "
+        #Dibujo
+        dsgn*="\\begin{figure}[H]
+        	\\centering
+            \\begin{tikzpicture}[scale=2]
+                $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
+                $(draw_soil_surface_lcode(mywall,1))
+                $(draw_wall_dimensions_lcode(mywall))
+            \\end{tikzpicture}
+          \\caption{Distribución de refuerzo}
+        	\\label{fig:distr}
+        \\end{figure}"
     end
 end
 
@@ -599,7 +666,7 @@ a="
         $(draw_qload_lcode(mywall,1))
     \\end{tikzpicture}
   \\caption{Geometría del muro de contención}
-	\\label{fig:spectre1}
+	\\label{fig:geom}
 \\end{figure}
 \\section{Cálculo}
 Para calcular la coeficiente de presión activa de Rankine usamos:\\\\
