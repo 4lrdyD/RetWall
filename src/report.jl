@@ -1,4 +1,4 @@
-#revisión 0.3.3 27-07-2023, 00:00 Julia 1.9.2
+#revisión 0.3.5 29-07-2023, 00:10 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -522,12 +522,30 @@ if haskey(kwargs,:design)
         \\end{align*}
         "
         #Dibujo
+        #lineas longitudinales
+        #coordenadas de los nodos en la pantalla posterior
+        xpi=b1+t2+t1+t3; ypi=hz;
+        xps=b1+t2+t1; yps=hz+hp;
+        dist=hypot(xps-xpi,yps-ypi);
+        Cs=(xps-xpi)/dist;
+        Sn=(yps-ypi)/dist;
+        rf_path=VolatileArray(zeros(Float64,0),0,0);
+        rf_path[1,1]=xps-rp/Sn-rp*Cs/Sn-0.15;
+        rf_path[1,2]=yps-rp;
+        rf_path[2,1]=xps-rp/Sn-rp*Cs/Sn;
+        rf_path[2,2]=yps-rp;
+        rf_path[3,1]=xpi-rp/Sn-(hz/Sn-rz/Sn)*Cs;
+        rf_path[3,2]=ypi-hz+rz;
+        rf_path[4,1]=xpi-rp/Sn-(hz/Sn-rz/Sn)*Cs+0.4;
+        rf_path[4,2]=ypi-hz+rz;
         dsgn*="\\begin{figure}[H]
         	\\centering
             \\begin{tikzpicture}[scale=2]
                 $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
                 $(draw_soil_surface_lcode(mywall,1))
                 $(draw_wall_dimensions_lcode(mywall))
+                $(draw_along_path_lcode(grav.nod,0.0127,0.15))
+                $(draw_polyline_lcode(Array(rf_path),1,2,3,4))
             \\end{tikzpicture}
           \\caption{Distribución de refuerzo}
         	\\label{fig:distr}
@@ -1297,5 +1315,44 @@ function print_wf_lcode(wforce::VolatileArray{T,2}) where {T<:Real}
     out=print_table_lcode(wforce,1,2,5,3,6,header=header,precision1=0);
     #eliminando la columna agregada.
     deleteat!(wforce,1,dim=2);
+    return out;
+end
+
+function draw_along_path_lcode(path::VolatileArray{T,2},r::Real,d::Real) where {T<:Real}
+    #dibuja circulos de radio r, a lo largo de un camino determinado por los
+    #puntos en path, estos estarán separados una distancia d
+    #debe insertarse dentro de un entorno tikzpicture
+    if size(path)[2]<2 error("Se esperaba una matriz de al menos dos columnas") end
+    if size(path)[1]<2 error("Se esperaba una matriz de al menos dos filas") end
+    out="";
+    np=size(path)[1];#número de puntos por recorrer
+    rd=0;#distancia residual, se actualizará en cada tramo
+    da=0;#distancia acumulada
+    Ca=0;#coseno del ángulo
+    Sa=0;#seno del ángulo
+    out*="\\draw($(path[1,1]),$(path[1,2])) circle($r);
+    "
+    for i in 1:np-1
+        x1=path[i,1];y1=path[i,2];#obteniendo las coordenadas de dos puntos
+        x2=path[i+1,1];y2=path[i+1,2];#consecutivos
+        dist=hypot(x2-x1,y2-y1);
+        if dist==0 Ca=0;Sa=0; else Ca=(x2-x1)/dist;Sa=(y2-y1)/dist; end
+        xi=x1+Ca*(d-rd);yi=y1+Sa*(d-rd);
+        if hypot(xi-x1,yi-y1)<=dist
+            lim=da+rd+dist;
+            out*="\\draw($xi,$yi) circle($r);
+            ";
+            da+=d;
+            while da+d<=lim
+                xi+=Ca*d;yi+=Sa*d;
+                out*="\\draw($xi,$yi) circle($r);
+                ";
+                da+=d;
+            end
+            rd=lim-da;
+        else
+            rd+=dist;
+        end
+    end
     return out;
 end
