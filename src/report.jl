@@ -1,4 +1,4 @@
-#revisión 0.3.5 29-07-2023, 00:10 Julia 1.9.2
+#revisión 0.3.6 30-07-2023, 01:40 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -529,15 +529,66 @@ if haskey(kwargs,:design)
         dist=hypot(xps-xpi,yps-ypi);
         Cs=(xps-xpi)/dist;
         Sn=(yps-ypi)/dist;
+        #obteniendo coordenadas para el acero de refuerzo principal en la cara
+        #posterior
+        rp_path=VolatileArray(zeros(Float64,0),0,0);
+        rp_path[1,1]=xps-rp/Sn-rp*Cs/Sn-0.15;
+        rp_path[1,2]=yps-rp;
+        rp_path[2,1]=xps-rp/Sn-rp*Cs/Sn;
+        rp_path[2,2]=yps-rp;
+        rp_path[3,1]=xpi-rp/Sn-(hz/Sn-rz/Sn)*Cs;
+        rp_path[3,2]=ypi-hz+rz;
+        rp_path[4,1]=xpi-rp/Sn-(hz/Sn-rz/Sn)*Cs+0.4;
+        rp_path[4,2]=ypi-hz+rz;
+
+        #coordenadas de los nodos en la pantalla frontal
+        xpi=b1; ypi=hz;
+        xps=b1+t2; yps=hz+hp;
+        dist=hypot(xps-xpi,yps-ypi);
+        Cs=(xps-xpi)/dist;
+        Sn=(yps-ypi)/dist;
+        #obteniendo coordenadas para el acero de refuerzo principal en la cara
+        #frontal
         rf_path=VolatileArray(zeros(Float64,0),0,0);
-        rf_path[1,1]=xps-rp/Sn-rp*Cs/Sn-0.15;
+        rf_path[1,1]=xps+rp/Sn-rp*Cs/Sn+0.15;
         rf_path[1,2]=yps-rp;
-        rf_path[2,1]=xps-rp/Sn-rp*Cs/Sn;
+        rf_path[2,1]=xps+rp/Sn-rp*Cs/Sn;
         rf_path[2,2]=yps-rp;
-        rf_path[3,1]=xpi-rp/Sn-(hz/Sn-rz/Sn)*Cs;
+        rf_path[3,1]=xpi+rp/Sn-(hz/Sn-rz/Sn)*Cs;
         rf_path[3,2]=ypi-hz+rz;
-        rf_path[4,1]=xpi-rp/Sn-(hz/Sn-rz/Sn)*Cs+0.4;
+        rf_path[4,1]=xpi+rp/Sn-(hz/Sn-rz/Sn)*Cs+0.4;
         rf_path[4,2]=ypi-hz+rz;
+
+        #coordenadas de los nodos en cara inferior de la zapata
+        xpi=0; ypi=0;
+        xps=b1+t2+t1+t3+b2; yps=0;
+        #obteniendo coordenadas para el acero de refuerzo en la cara
+        #inferior de la zapata
+        rzi_path=VolatileArray(zeros(Float64,0),0,0);
+        rzi_path[1,1]=rz;
+        rzi_path[1,2]=rz+.15;
+        rzi_path[2,1]=rz;
+        rzi_path[2,2]=rz;
+        rzi_path[3,1]=xps-rz;
+        rzi_path[3,2]=rz;
+        rzi_path[4,1]=xps-rz;
+        rzi_path[4,2]=rz+.15;
+
+        #coordenadas de los nodos en cara superior de la zapata
+        xpi=0; ypi=hz;
+        xps=b1+t2+t1+t3+b2; yps=hz;
+        #obteniendo coordenadas para el acero de refuerzo en la cara superior
+        #de la zapata
+        rzs_path=VolatileArray(zeros(Float64,0),0,0);
+        rzs_path[1,1]=rz;
+        rzs_path[1,2]=ypi-rz-.15;
+        rzs_path[2,1]=rz;
+        rzs_path[2,2]=ypi-rz;
+        rzs_path[3,1]=xps-rz;
+        rzs_path[3,2]=ypi-rz;
+        rzs_path[4,1]=xps-rz;
+        rzs_path[4,2]=ypi-rz-.15;
+
         dsgn*="\\begin{figure}[H]
         	\\centering
             \\begin{tikzpicture}[scale=2]
@@ -545,7 +596,10 @@ if haskey(kwargs,:design)
                 $(draw_soil_surface_lcode(mywall,1))
                 $(draw_wall_dimensions_lcode(mywall))
                 $(draw_along_path_lcode(grav.nod,0.0127,0.15))
-                $(draw_polyline_lcode(Array(rf_path),1,2,3,4))
+                $(draw_polyline_lcode(Array(rp_path),1,2,3,4,ops="line width=0.3mm"))
+                $(draw_polyline_lcode(Array(rf_path),1,2,3,4,ops="line width=0.3mm"))
+                $(draw_polyline_lcode(Array(rzi_path),1,2,3,4,ops="line width=0.3mm"))
+                $(draw_polyline_lcode(Array(rzs_path),1,2,3,4,ops="line width=0.3mm"))
             \\end{tikzpicture}
           \\caption{Distribución de refuerzo}
         	\\label{fig:distr}
