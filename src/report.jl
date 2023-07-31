@@ -1,4 +1,4 @@
-#revisión 0.3.6 30-07-2023, 01:40 Julia 1.9.2
+#revisión 0.3.7 31-07-2023, 01:40 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -573,6 +573,16 @@ if haskey(kwargs,:design)
         rzi_path[3,2]=rz;
         rzi_path[4,1]=xps-rz;
         rzi_path[4,2]=rz+.15;
+        #para refuerzo transversal
+        S=trunc(rfpz_a/(0.0018*hz)*100)/100
+        rzit_path=VolatileArray(zeros(Float64,0),0,0);#para refuerzo transversal
+        rzit_path[1,1]=rz+rfpz_d/2;
+        rzit_path[1,2]=rz+rfpz_d/2;
+        rzit_path[2,1]=xps-rz-rfpz_d/2;
+        rzit_path[2,2]=rz+rfpz_d/2;
+        dist=hypot(rzit_path[1,1]-rzit_path[2,1],rzit_path[1,2]-rzit_path[2,2]);
+        nb=trunc(dist/S);
+        rzit_path[1,1]+=(dist-nb*S)/2;
 
         #coordenadas de los nodos en cara superior de la zapata
         xpi=0; ypi=hz;
@@ -588,6 +598,31 @@ if haskey(kwargs,:design)
         rzs_path[3,2]=ypi-rz;
         rzs_path[4,1]=xps-rz;
         rzs_path[4,2]=ypi-rz-.15;
+        #para refuerzo transversal
+        S=trunc(rfpz_a/(0.0018*hz)*100)/100
+        rzst_path=VolatileArray(zeros(Float64,0),0,0);#para refuerzo transversal
+        rzst_path[1,1]=rz+rfpz_d/2;
+        rzst_path[1,2]=hz-rz-rfpz_d/2;
+        rzst_path[2,1]=xps-rz-rfpz_d/2;
+        rzst_path[2,2]=hz-rz-rfpz_d/2;
+        dist=hypot(rzst_path[1,1]-rzst_path[2,1],rzst_path[1,2]-rzst_path[2,2]);
+        nb=trunc(dist/S);
+        rzst_path[1,1]+=(dist-nb*S)/2;
+
+        #obteniendo coordenadas para el acero de refuerzo adicional en la cara posterior
+        #de la pantalla
+        rpa_path=VolatileArray(zeros(Float64,0),0,0);
+        rpa_path[1,1]=rp_path[2,1]-.03;
+        rpa_path[1,2]=rp_path[2,2];
+        rpa_path[2,1]=rp_path[3,1]-.03;
+        rpa_path[2,2]=rp_path[3,2];
+        rpa_path[3,1]=rp_path[4,1]-.03;
+        rpa_path[3,2]=rp_path[4,2];
+        dist=hypot(rpa_path[1,1]-rpa_path[2,1],rpa_path[1,2]-rpa_path[2,2]);
+        Cs=(rpa_path[1,1]-rpa_path[2,1])/dist;
+        Sn=(rpa_path[1,2]-rpa_path[2,2])/dist;
+        rpa_path[1,1]=rpa_path[2,1]+(hz-rz+ceil((hp-hm+d)*20)/20)*Cs/Sn;
+        rpa_path[1,2]=rpa_path[2,2]+hz-rz+ceil((hp-hm+d)*20)/20;
 
         dsgn*="\\begin{figure}[H]
         	\\centering
@@ -595,11 +630,13 @@ if haskey(kwargs,:design)
                 $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
                 $(draw_soil_surface_lcode(mywall,1))
                 $(draw_wall_dimensions_lcode(mywall))
-                $(draw_along_path_lcode(grav.nod,0.0127,0.15))
+                $(draw_along_path_lcode(rzst_path,rfpz_d/2,trunc(rfpz_a/(0.0018*hz)*100)/100))
+                $(draw_along_path_lcode(rzit_path,rfpz_d/2,trunc(rfpz_a/(0.0018*hz)*100)/100))
                 $(draw_polyline_lcode(Array(rp_path),1,2,3,4,ops="line width=0.3mm"))
                 $(draw_polyline_lcode(Array(rf_path),1,2,3,4,ops="line width=0.3mm"))
                 $(draw_polyline_lcode(Array(rzi_path),1,2,3,4,ops="line width=0.3mm"))
                 $(draw_polyline_lcode(Array(rzs_path),1,2,3,4,ops="line width=0.3mm"))
+                $(draw_polyline_lcode(Array(rpa_path),1,2,3,ops="line width=0.3mm"))
             \\end{tikzpicture}
           \\caption{Distribución de refuerzo}
         	\\label{fig:distr}
