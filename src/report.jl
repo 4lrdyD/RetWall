@@ -187,6 +187,11 @@ if haskey(kwargs,:design)
         #elección del área de refuerzo
         Asmin=0.0018*h;
         if As<Asmin As=Asmin end
+        #este valor se utilizará para determinar si el dibijo de acero de Refuerzo
+        #adicional es necesario, si es necesario el valor será 1
+        draw_aditional_path=0;
+        if As==Asmin else draw_aditional_path=0; end
+        Spf=trunc(rfp_a*100/As)/100;
 
         dsgn*="\\section{Diseño de refuerzo}
         \\subsection{Pantalla}
@@ -241,6 +246,23 @@ if haskey(kwargs,:design)
         L_{c_{usar}}&=$(ceil((hp-hm+d)*20)/20) m &\\Rightarrow \\textit{Longitud final}\\\\%elegimos el mayor multiplo de 0.05
         \\end{align*}
         "
+        if draw_aditional_path==1
+            #calculamos el acero de refuerzo que le correspondería a Mu/2 para determinar
+            #si es necesario modificar separaciones
+            dm=(t2+t3)*hm/hp+t1-rp-rfp_d/2;
+            #iteración para conseguir el área de refuerzo
+            a=dm/5;#valor inicial de la profundidad de la zona en compresión
+            Asm=long_reinforcement_area(Mu/2,phim,fy,dm,a);
+            while abs(a-compression_zone_depth(Asm,fy,fc,1))>1e-6
+                a=compression_zone_depth(Asm,fy,fc,1);
+                Asm=long_reinforcement_area(Mu/2,phim,fy,dm,a);
+            end
+            #elección del área de refuerzo
+            Asmmin=0.0018*((t2+t3)*hm/hp+t1);
+            if Asm<Asmmin Asm=Asmmin end
+            Spfm=trunc(rfp_a*100/Asm)/100;
+            if Spfm>=2*Spf else Spf=Spfm/2; end
+        end
 
         #VERIFICACIÓN POR CORTE_________________________________________________
         hc=hp-d;#profundidad a la que se verifica por corte
@@ -540,6 +562,44 @@ if haskey(kwargs,:design)
         rp_path[3,2]=ypi-hz+rz;
         rp_path[4,1]=xpi-rp/Sn-(hz/Sn-rz/Sn)*Cs+0.4;
         rp_path[4,2]=ypi-hz+rz;
+        #obteniendo coordenadas para el acero de refuerzo adicional en la cara posterior
+        #de la pantalla
+        if draw_aditional_path==1
+            rpa_path=VolatileArray(zeros(Float64,0),0,0);
+            rpa_path[1,1]=rp_path[2,1]-.03;
+            rpa_path[1,2]=rp_path[2,2];
+            rpa_path[2,1]=rp_path[3,1]-.03;
+            rpa_path[2,2]=rp_path[3,2];
+            rpa_path[3,1]=rp_path[4,1]-.03;
+            rpa_path[3,2]=rp_path[4,2];
+            dist=hypot(rpa_path[1,1]-rpa_path[2,1],rpa_path[1,2]-rpa_path[2,2]);
+            Cs=(rpa_path[1,1]-rpa_path[2,1])/dist;
+            Sn=(rpa_path[1,2]-rpa_path[2,2])/dist;
+            rpa_path[1,1]=rpa_path[2,1]+(hz-rz+ceil((hp-hm+d)*20)/20)*Cs/Sn;
+            rpa_path[1,2]=rpa_path[2,2]+hz-rz+ceil((hp-hm+d)*20)/20;
+            dap=draw_polyline_lcode(Array(rpa_path),1,2,3,ops="line width=0.2mm");
+        else
+            dap="";
+            #temperatura pantalla posterior
+            rptd_path=VolatileArray(zeros(Float64,0),0,0);#parte inferior
+            S=trunc(rfpp_a/(Astd*1/3)*100)/100
+            rptd_path[1,1]=rp_path[3,1]+(hz-rz)*Cs/Sn-rfpp_d/(2*Sn);
+            rptd_path[1,2]=rp_path[3,2]+hz-rz
+            rptd_path[2,1]=rptd_path[1,1]+hp*Cs/(3*Sn);
+            rptd_path[2,2]=rptd_path[1,2]+hp/3;
+            rptm_path=VolatileArray(zeros(Float64,0),0,0);#parte media
+            rptm_path[1,1]=rptd_path[1,1]+ceil((hp/(3*Sn))/S)*S*Cs;
+            rptm_path[1,2]=rptd_path[1,2]+ceil((hp/(3*Sn))/S)*S*Sn;
+            rptm_path[2,1]=rptd_path[1,1]+hp*Cs*2/(3*Sn);
+            rptm_path[2,2]=rptd_path[1,2]+hp*2/3;
+            S=trunc(rfpp_a/(Astm*1/3)*100)/100
+            rptu_path=VolatileArray(zeros(Float64,0),0,0);#parte superior
+            dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
+            rptu_path[1,1]=rptm_path[1,1]+ceil(dist/S)*S*Cs;
+            rptu_path[1,2]=rptm_path[1,2]+ceil(dist/S)*S*Sn;
+            rptu_path[2,1]=rp_path[2,1]-rfpp_d/(2*Sn);
+            rptu_path[2,2]=rp_path[2,2];
+        end
 
         #coordenadas de los nodos en la pantalla frontal
         xpi=b1; ypi=hz;
@@ -558,6 +618,25 @@ if haskey(kwargs,:design)
         rf_path[3,2]=ypi-hz+rz;
         rf_path[4,1]=xpi+rp/Sn-(hz/Sn-rz/Sn)*Cs+0.4;
         rf_path[4,2]=ypi-hz+rz;
+        #temperatura pantalla frontal
+        rftd_path=VolatileArray(zeros(Float64,0),0,0);#parte inferior
+        S=trunc(rfpf_a/(Astd*2/3)*100)/100
+        rftd_path[1,1]=rf_path[3,1]+(hz-rz)*Cs/Sn+rfpf_d/(2*Sn);
+        rftd_path[1,2]=rf_path[3,2]+hz-rz
+        rftd_path[2,1]=rftd_path[1,1]+hp*Cs/(3*Sn);
+        rftd_path[2,2]=rftd_path[1,2]+hp/3;
+        rftm_path=VolatileArray(zeros(Float64,0),0,0);#parte media
+        rftm_path[1,1]=rftd_path[1,1]+ceil((hp/(3*Sn))/S)*S*Cs;
+        rftm_path[1,2]=rftd_path[1,2]+ceil((hp/(3*Sn))/S)*S*Sn;
+        rftm_path[2,1]=rftd_path[1,1]+hp*Cs*2/(3*Sn);
+        rftm_path[2,2]=rftd_path[1,2]+hp*2/3;
+        S=trunc(rfpf_a/(Astm*2/3)*100)/100
+        rftu_path=VolatileArray(zeros(Float64,0),0,0);#parte superior
+        dist=hypot(rftm_path[1,1]-rftm_path[2,1],rftm_path[1,2]-rftm_path[2,2]);
+        rftu_path[1,1]=rftm_path[1,1]+ceil(dist/S)*S*Cs;
+        rftu_path[1,2]=rftm_path[1,2]+ceil(dist/S)*S*Sn;
+        rftu_path[2,1]=rf_path[2,1]+rfpf_d/(2*Sn);
+        rftu_path[2,2]=rf_path[2,2];
 
         #coordenadas de los nodos en cara inferior de la zapata
         xpi=0; ypi=0;
@@ -609,21 +688,6 @@ if haskey(kwargs,:design)
         nb=trunc(dist/S);
         rzst_path[1,1]+=(dist-nb*S)/2;
 
-        #obteniendo coordenadas para el acero de refuerzo adicional en la cara posterior
-        #de la pantalla
-        rpa_path=VolatileArray(zeros(Float64,0),0,0);
-        rpa_path[1,1]=rp_path[2,1]-.03;
-        rpa_path[1,2]=rp_path[2,2];
-        rpa_path[2,1]=rp_path[3,1]-.03;
-        rpa_path[2,2]=rp_path[3,2];
-        rpa_path[3,1]=rp_path[4,1]-.03;
-        rpa_path[3,2]=rp_path[4,2];
-        dist=hypot(rpa_path[1,1]-rpa_path[2,1],rpa_path[1,2]-rpa_path[2,2]);
-        Cs=(rpa_path[1,1]-rpa_path[2,1])/dist;
-        Sn=(rpa_path[1,2]-rpa_path[2,2])/dist;
-        rpa_path[1,1]=rpa_path[2,1]+(hz-rz+ceil((hp-hm+d)*20)/20)*Cs/Sn;
-        rpa_path[1,2]=rpa_path[2,2]+hz-rz+ceil((hp-hm+d)*20)/20;
-
         dsgn*="\\begin{figure}[H]
         	\\centering
             \\begin{tikzpicture}[scale=2]
@@ -632,11 +696,17 @@ if haskey(kwargs,:design)
                 $(draw_wall_dimensions_lcode(mywall))
                 $(draw_along_path_lcode(rzst_path,rfpz_d/2,trunc(rfpz_a/(0.0018*hz)*100)/100))
                 $(draw_along_path_lcode(rzit_path,rfpz_d/2,trunc(rfpz_a/(0.0018*hz)*100)/100))
-                $(draw_polyline_lcode(Array(rp_path),1,2,3,4,ops="line width=0.3mm"))
-                $(draw_polyline_lcode(Array(rf_path),1,2,3,4,ops="line width=0.3mm"))
-                $(draw_polyline_lcode(Array(rzi_path),1,2,3,4,ops="line width=0.3mm"))
-                $(draw_polyline_lcode(Array(rzs_path),1,2,3,4,ops="line width=0.3mm"))
-                $(draw_polyline_lcode(Array(rpa_path),1,2,3,ops="line width=0.3mm"))
+                $(draw_along_path_lcode(rftd_path,rfpf_d/2,trunc(rfpf_a/(Astd*2/3)*100)/100))
+                $(draw_along_path_lcode(rftm_path,rfpf_d/2,trunc(rfpf_a/(Astm*2/3)*100)/100))
+                $(draw_along_path_lcode(rftu_path,rfpf_d/2,trunc(rfpf_a/(Astu*2/3)*100)/100))
+                $(draw_along_path_lcode(rptd_path,rfpp_d/2,trunc(rfpp_a/(Astd*1/3)*100)/100))
+                $(draw_along_path_lcode(rptm_path,rfpp_d/2,trunc(rfpp_a/(Astm*1/3)*100)/100))
+                $(draw_along_path_lcode(rptu_path,rfpp_d/2,trunc(rfpp_a/(Astu*1/3)*100)/100))
+                $(draw_polyline_lcode(Array(rp_path),1,2,3,4,ops="line width=0.2mm"))
+                $(draw_polyline_lcode(Array(rf_path),1,2,3,4,ops="line width=0.2mm"))
+                $(draw_polyline_lcode(Array(rzi_path),1,2,3,4,ops="line width=0.2mm"))
+                $(draw_polyline_lcode(Array(rzs_path),1,2,3,4,ops="line width=0.2mm"))
+                $dap
             \\end{tikzpicture}
           \\caption{Distribución de refuerzo}
         	\\label{fig:distr}
