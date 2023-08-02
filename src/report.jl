@@ -1,4 +1,4 @@
-#revisión 0.3.7 31-07-2023, 01:40 Julia 1.9.2
+#revisión 0.3.8 02-08-2023, 01:45 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -190,7 +190,7 @@ if haskey(kwargs,:design)
         #este valor se utilizará para determinar si el dibijo de acero de Refuerzo
         #adicional es necesario, si es necesario el valor será 1
         draw_aditional_path=0;
-        if As==Asmin else draw_aditional_path=0; end
+        if As==Asmin else draw_aditional_path=1; end
         Spf=trunc(rfp_a*100/As)/100;
 
         dsgn*="\\section{Diseño de refuerzo}
@@ -578,7 +578,90 @@ if haskey(kwargs,:design)
             rpa_path[1,1]=rpa_path[2,1]+(hz-rz+ceil((hp-hm+d)*20)/20)*Cs/Sn;
             rpa_path[1,2]=rpa_path[2,2]+hz-rz+ceil((hp-hm+d)*20)/20;
             dap=draw_polyline_lcode(Array(rpa_path),1,2,3,ops="line width=0.2mm");
+            #temperatura pantalla posterior
+            rptd_path=VolatileArray(zeros(Float64,0),0,0);#parte inferior
+            S=trunc(rfpp_a/(Astd*1/3)*100)/100
+            rptd_path[1,1]=rp_path[3,1]+(hz-rz)*Cs/Sn-rfpp_d/(2*Sn);
+            rptd_path[1,2]=rp_path[3,2]+hz-rz
+            rptd_path[2,1]=rptd_path[1,1]+hp*Cs/(3*Sn);
+            rptd_path[2,2]=rptd_path[1,2]+hp/3;
+            rptm_path=VolatileArray(zeros(Float64,0),0,0);#parte media
+            rptm_path[1,1]=rptd_path[1,1]+ceil((hp/(3*Sn))/S)*S*Cs;
+            rptm_path[1,2]=rptd_path[1,2]+ceil((hp/(3*Sn))/S)*S*Sn;
+            rptm_path[2,1]=rptd_path[1,1]+hp*Cs*2/(3*Sn);
+            rptm_path[2,2]=rptd_path[1,2]+hp*2/3;
+            S=trunc(rfpp_a/(Astm*1/3)*100)/100
+            rptu_path=VolatileArray(zeros(Float64,0),0,0);#parte superior
+            dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
+            rptu_path[1,1]=rptm_path[1,1]+ceil(dist/S)*S*Cs;
+            rptu_path[1,2]=rptm_path[1,2]+ceil(dist/S)*S*Sn;
+            rptu_path[2,1]=rp_path[2,1]-rfpp_d/(2*Sn);
+            rptu_path[2,2]=rp_path[2,2];
+            #corrigiendo la ubicación del acero transversal en el dibujo en
+            #uno de los tramos por refuerzo adicional
+            Lc=ceil((hp-hm+d)*20)/20;
+            L1=rptd_path[2,2];L2=rptm_path[1,2];L3=rptm_path[2,2];L4=rptu_path[1,2];L5=rptu_path[2,2];#límietes clave
+            if L1>hz+Lc
+                S=trunc(rfpp_a/(Astd*1/3)*100)/100
+                rptd_path[1,1]=rptd_path[1,1]-.03;
+                help_path=VolatileArray(zeros(Float64,0),0,0);#camino de ayuda
+                help_path[2,1]=rptd_path[2,1];
+                help_path[2,2]=rptd_path[2,2];
+                rptd_path[2,1]=rptd_path[1,1]+(hz+Lc)*Cs/Sn;
+                rptd_path[2,2]=rptd_path[1,2]+hz+Lc;
+                dist=hypot(rptd_path[1,1]-rptd_path[2,1],rptd_path[2,1]-rptd_path[2,2]);
+                help_path[1,1]=rptd_path[1,1]+ceil(dist/S)*S*Cs+.03;
+                help_path[1,2]=rptd_path[1,2]+ceil(dist/S)*S*Sn;
+                if help_path[2,2]>=help_path[1,2]
+                    draw_help=draw_along_path_lcode(help_path,rfpp_d/2,S);
+                end
+            elseif L1<=hz+Lc<=L2
+                rptd_path[1,1]=rptd_path[1,1]-.03;
+                rptd_path[2,1]=rptd_path[2,1]-.03;
+                draw_help="";
+            elseif L2<hz+Lc<L3
+                rptd_path[1,1]=rptd_path[1,1]-.03;
+                rptd_path[2,1]=rptd_path[2,1]-.03;
+                S=trunc(rfpp_a/(Astm*1/3)*100)/100
+                rptm_path[1,1]=rptm_path[1,1]-.03;
+                help_path=VolatileArray(zeros(Float64,0),0,0);#camino de ayuda
+                help_path[2,1]=rptm_path[2,1];
+                help_path[2,2]=rptm_path[2,2];
+                rptm_path[2,1]=rptd_path[1,1]+(hz+Lc)*Cs/Sn;
+                rptm_path[2,2]=rptd_path[1,2]+hz+Lc;
+                dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[2,1]-rptm_path[2,2]);
+                help_path[1,1]=rptm_path[1,1]+ceil(dist/S)*S*Cs+.03;
+                help_path[1,2]=rptm_path[1,2]+ceil(dist/S)*S*Sn;
+                if help_path[2,2]>=help_path[1,2]
+                    draw_help=draw_along_path_lcode(help_path,rfpp_d/2,S);
+                end
+            elseif L3<=hz+Lc<=L4
+                rptd_path[1,1]=rptd_path[1,1]-.03;
+                rptd_path[2,1]=rptd_path[2,1]-.03;
+                rptm_path[1,1]=rptm_path[1,1]-.03;
+                rptm_path[2,1]=rptm_path[2,1]-.03;
+                draw_help="";
+            elseif L4<hz+Lc<L5
+                rptd_path[1,1]=rptd_path[1,1]-.03;
+                rptd_path[2,1]=rptd_path[2,1]-.03;
+                rptm_path[1,1]=rptm_path[1,1]-.03;
+                rptm_path[2,1]=rptm_path[2,1]-.03;
+                S=trunc(rfpp_a/(Astu*1/3)*100)/100
+                rptu_path[1,1]=rptu_path[1,1]-.03;
+                help_path=VolatileArray(zeros(Float64,0),0,0);#camino de ayuda
+                help_path[2,1]=rptu_path[2,1];
+                help_path[2,2]=rptu_path[2,2];
+                rptu_path[2,1]=rptd_path[1,1]+(hz+Lc)*Cs/Sn;
+                rptu_path[2,2]=rptd_path[1,2]+hz+Lc;
+                dist=hypot(rptu_path[1,1]-rptu_path[2,1],rptu_path[2,1]-rptu_path[2,2]);
+                help_path[1,1]=rptu_path[1,1]+ceil(dist/S)*S*Cs+.03;
+                help_path[1,2]=rptu_path[1,2]+ceil(dist/S)*S*Sn;
+                if help_path[2,2]>=help_path[1,2]
+                    draw_help=draw_along_path_lcode(help_path,rfpp_d/2,S);
+                end
+            end
         else
+            draw_help="";
             dap="";
             #temperatura pantalla posterior
             rptd_path=VolatileArray(zeros(Float64,0),0,0);#parte inferior
@@ -694,6 +777,7 @@ if haskey(kwargs,:design)
                 $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
                 $(draw_soil_surface_lcode(mywall,1))
                 $(draw_wall_dimensions_lcode(mywall))
+                $draw_help
                 $(draw_along_path_lcode(rzst_path,rfpz_d/2,trunc(rfpz_a/(0.0018*hz)*100)/100))
                 $(draw_along_path_lcode(rzit_path,rfpz_d/2,trunc(rfpz_a/(0.0018*hz)*100)/100))
                 $(draw_along_path_lcode(rftd_path,rfpf_d/2,trunc(rfpf_a/(Astd*2/3)*100)/100))
