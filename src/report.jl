@@ -1,4 +1,4 @@
-#revisión 0.3.8 02-08-2023, 01:45 Julia 1.9.2
+#revisión 0.3.9 02-08-2023, 23:35 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -771,9 +771,12 @@ if haskey(kwargs,:design)
         nb=trunc(dist/S);
         rzst_path[1,1]+=(dist-nb*S)/2;
 
+        #Obteniendo la escala para el dibujo de muro con refuerzo
+        esc=15/(b1+t2+t1+t3+b2+2.5);
+
         dsgn*="\\begin{figure}[H]
         	\\centering
-            \\begin{tikzpicture}[scale=2]
+            \\begin{tikzpicture}[scale=$esc]
                 $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
                 $(draw_soil_surface_lcode(mywall,1))
                 $(draw_wall_dimensions_lcode(mywall))
@@ -797,7 +800,8 @@ if haskey(kwargs,:design)
         \\end{figure}"
     end
 end
-
+#escala para la geometría del muro
+esc=15/(b1+t2+t1+t3+b2+3);
 a="
 \\documentclass[oneside,spanish]{scrbook}
 \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
@@ -916,7 +920,7 @@ a="
 
 \\begin{figure}[H]
 	\\centering
-    \\begin{tikzpicture}[scale=2]
+    \\begin{tikzpicture}[scale=$esc]
         $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
         $(draw_polyline_lcode(Array(grav.nod),5,8,ops="dashed"))
         $(draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed"))
