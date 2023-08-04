@@ -1,4 +1,4 @@
-#revisión 0.3.9 02-08-2023, 23:35 Julia 1.9.2
+#revisión 0.4.0 04-08-2023, 00:20 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -794,6 +794,7 @@ if haskey(kwargs,:design)
                 $(draw_polyline_lcode(Array(rzi_path),1,2,3,4,ops="line width=0.2mm"))
                 $(draw_polyline_lcode(Array(rzs_path),1,2,3,4,ops="line width=0.2mm"))
                 $dap
+                $(draw_leader_lcode((1.4,0.5),pos="below right",label="\$\\phi5/8''@0.15m\$",type="circle",diameter=0.04*esc))
             \\end{tikzpicture}
           \\caption{Distribución de refuerzo}
         	\\label{fig:distr}
@@ -815,6 +816,7 @@ a="
 \\usepackage{amsmath}
 \\usepackage{tikz}
 \\usetikzlibrary{babel,calc}
+\\usetikzlibrary{arrows.meta}
 \\usepackage{xparse}
 \\usepackage{pgfplots}
 \\pgfplotsset{compat=newest}
@@ -1603,5 +1605,79 @@ function draw_along_path_lcode(path::VolatileArray{T,2},r::Real,d::Real) where {
             rd+=dist;
         end
     end
+    return out;
+end
+
+
+function draw_leader_lcode(p::Tuple{T,N};kwargs...) where {T<:Real, N<:Real}
+    #dibujará un leader para indicar algún elementos, las palabrás clave son
+    #pos::String, que puede ser right, left, above, below, o la combinación de estos
+    #label::String, La etiqueta del indicador
+    #type::String, tipo de indicador, arrow o circle
+    #diameter<:Real, diametro del circulo, suncionará solo si se elige el tipo circle
+    out="";
+    x=p[1];
+    y=p[2];
+    pos="above right";#posición por defecto
+    label="";#etiqueta por defecto
+    type="arrow";#tipo por defecto
+    diameter=0.04;#diametro por defecto
+
+    if haskey(kwargs,:label)
+        label=kwargs[:label];
+        if typeof(label)!=String
+            error("label no es del tipo esperado")
+        end
+    end
+
+    draw_ops="[<-]";
+    if haskey(kwargs,:type)
+        type=kwargs[:type];
+        if typeof(type)!=String
+            error("type no es del tipo esperado")
+        end
+
+        if type=="circle"
+            if haskey(kwargs,:diameter)
+                diameter=kwargs[:diameter];
+                if typeof(diameter)<:Real
+                    if diameter<=0 error("diameter debe ser real positivo") end
+                else
+                    error("diameter no es del tipo esperado")
+                end
+            end
+            draw_ops="[{Circle[open,width=$(diameter)cm,length=$(diameter)cm]}-, shorten <= -$(diameter/2)cm]"
+        elseif type=="arrow"
+        else
+            error("no se esperaba type=$type")
+        end
+    end
+
+
+    if haskey(kwargs,:pos)
+        pos=kwargs[:pos];
+        if typeof(pos)!=String
+            error("pos no es del tipo esperado")
+        end
+    end
+
+    if pos=="right"
+        out*="\\draw $draw_ops ($x,$y)--++(0:0.25) node[right]{\\tiny{$label}};"
+    elseif pos=="left"
+        out*="\\draw $draw_ops ($x,$y)--++(0:-0.25) node[left]{\\tiny{$label}};"
+    elseif pos=="above"
+        out*="\\draw $draw_ops ($x,$y)--++(90:0.25) node[above]{\\tiny{$label}};"
+    elseif pos=="below"
+        out*="\\draw $draw_ops ($x,$y)--++(90:-0.25) node[below]{\\tiny{$label}};"
+    elseif pos=="above right" || pos=="right above"
+        out*="\\draw $draw_ops ($x,$y)--++(45:0.25)--++(0:0.25) node[right]{\\tiny{$label}};"
+    elseif pos=="below right" || pos=="right below"
+        out*="\\draw $draw_ops ($x,$y)--++(-45:0.25)--++(0:0.25) node[right]{\\tiny{$label}};"
+    elseif pos=="below left" || pos=="left below"
+        out*="\\draw $draw_ops ($x,$y)--++(-135:0.25)--++(0:-0.25) node[left]{\\tiny{$label}};"
+    elseif pos=="above left" || pos=="left above"
+        out*="\\draw $draw_ops ($x,$y)--++(135:0.25)--++(0:-0.25) node[right]{\\tiny{$label}};"
+    end
+
     return out;
 end
