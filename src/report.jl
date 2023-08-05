@@ -1,4 +1,4 @@
-#revisión 0.4.0 04-08-2023, 00:20 Julia 1.9.2
+#revisión 0.4.1 04-08-2023, 23:50 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -544,6 +544,7 @@ if haskey(kwargs,:design)
         \\end{align*}
         "
         #Dibujo
+        labels="";#Etiquetas de refuerzo
         #lineas longitudinales
         #coordenadas de los nodos en la pantalla posterior
         xpi=b1+t2+t1+t3; ypi=hz;
@@ -591,6 +592,15 @@ if haskey(kwargs,:design)
             rptm_path[2,1]=rptd_path[1,1]+hp*Cs*2/(3*Sn);
             rptm_path[2,2]=rptd_path[1,2]+hp*2/3;
             S=trunc(rfpp_a/(Astm*1/3)*100)/100
+
+            #etiqueta de acero longitudinal-----------------------------------
+            dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
+            dist=trunc(trunc(dist/S)/2)*S+S/2;
+            labelx=rptm_path[1,1]+dist*Cs+rfpp_d/(2*Sn);
+            labely=rptm_path[1,2]+dist*Sn;
+            labeln="\$$rfp_n @ $(Spf*2)\$";
+            labels*=draw_leader_lcode((labelx,labely),label=labeln);
+
             rptu_path=VolatileArray(zeros(Float64,0),0,0);#parte superior
             dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
             rptu_path[1,1]=rptm_path[1,1]+ceil(dist/S)*S*Cs;
@@ -615,10 +625,28 @@ if haskey(kwargs,:design)
                 if help_path[2,2]>=help_path[1,2]
                     draw_help=draw_along_path_lcode(help_path,rfpp_d/2,S);
                 end
+
+                #etiqueta de acero longitudinal-----------------------------------
+                dist=hypot(rptd_path[1,1]-rptd_path[2,1],rptd_path[1,2]-rptd_path[2,2]);
+                dist=trunc(trunc(dist/S)/2)*S+S/2;
+                labelx=rptd_path[1,1]+dist*Cs+rfpp_d/(2*Sn);
+                labely=rptd_path[1,2]+dist*Sn;
+                labeln="\$$rfp_n @ $(Spf*2)\$";
+                labels*=draw_leader_lcode((labelx,labely),label=labeln);
+
             elseif L1<=hz+Lc<=L2
                 rptd_path[1,1]=rptd_path[1,1]-.03;
                 rptd_path[2,1]=rptd_path[2,1]-.03;
                 draw_help="";
+                S=trunc(rfpp_a/(Astd*1/3)*100)/100
+                #etiqueta de acero longitudinal-----------------------------------
+                dist=hypot(rptd_path[1,1]-rptd_path[2,1],rptd_path[1,2]-rptd_path[2,2]);
+                dist=trunc(trunc(dist/S)/2)*S+S/2;
+                labelx=rptd_path[1,1]+dist*Cs+rfpp_d/(2*Sn);
+                labely=rptd_path[1,2]+dist*Sn;
+                labeln="\$$rfp_n @ $(Spf*2)\$";
+                labels*=draw_leader_lcode((labelx,labely),label=labeln);
+
             elseif L2<hz+Lc<L3
                 rptd_path[1,1]=rptd_path[1,1]-.03;
                 rptd_path[2,1]=rptd_path[2,1]-.03;
@@ -635,6 +663,15 @@ if haskey(kwargs,:design)
                 if help_path[2,2]>=help_path[1,2]
                     draw_help=draw_along_path_lcode(help_path,rfpp_d/2,S);
                 end
+
+                #etiqueta de acero longitudinal-----------------------------------
+                dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
+                dist=trunc(trunc(dist/S)/2)*S+S/2;
+                labelx=rptm_path[1,1]+dist*Cs+rfpp_d/(2*Sn);
+                labely=rptm_path[1,2]+dist*Sn;
+                labeln="\$$rfp_n @ $(Spf*2)\$";
+                labels*=draw_leader_lcode((labelx,labely),label=labeln);
+
             elseif L3<=hz+Lc<=L4
                 rptd_path[1,1]=rptd_path[1,1]-.03;
                 rptd_path[2,1]=rptd_path[2,1]-.03;
@@ -676,6 +713,15 @@ if haskey(kwargs,:design)
             rptm_path[2,1]=rptd_path[1,1]+hp*Cs*2/(3*Sn);
             rptm_path[2,2]=rptd_path[1,2]+hp*2/3;
             S=trunc(rfpp_a/(Astm*1/3)*100)/100
+
+            #etiqueta de acero longitudinal-----------------------------------
+            dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
+            dist=trunc(trunc(dist/S)/2)*S+S/2;
+            labelx=rptm_path[1,1]+dist*Cs+rfpp_d/(2*Sn);
+            labely=rptm_path[1,2]+dist*Sn;
+            labeln="\$$rfp_n @ $(Spf)\$";
+            labels*=draw_leader_lcode((labelx,labely),label=labeln);
+
             rptu_path=VolatileArray(zeros(Float64,0),0,0);#parte superior
             dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
             rptu_path[1,1]=rptm_path[1,1]+ceil(dist/S)*S*Cs;
@@ -713,7 +759,17 @@ if haskey(kwargs,:design)
         rftm_path[1,2]=rftd_path[1,2]+ceil((hp/(3*Sn))/S)*S*Sn;
         rftm_path[2,1]=rftd_path[1,1]+hp*Cs*2/(3*Sn);
         rftm_path[2,2]=rftd_path[1,2]+hp*2/3;
+
+        #etiqueta de acero longitudinal-----------------------------------
+        labeln="\$$rfpf_n @ $S\$";
         S=trunc(rfpf_a/(Astm*2/3)*100)/100
+        dist=hypot(rftm_path[1,1]-rftm_path[2,1],rftm_path[1,2]-rftm_path[2,2]);
+        dist=trunc(trunc(dist/S)/2)*S+S/2;
+        labelx=rftm_path[1,1]+dist*Cs-rfpf_d/(2*Sn);
+        labely=rftm_path[1,2]+dist*Sn;
+        labels*=draw_leader_lcode((labelx,labely),label=labeln,pos="above left");
+
+
         rftu_path=VolatileArray(zeros(Float64,0),0,0);#parte superior
         dist=hypot(rftm_path[1,1]-rftm_path[2,1],rftm_path[1,2]-rftm_path[2,2]);
         rftu_path[1,1]=rftm_path[1,1]+ceil(dist/S)*S*Cs;
@@ -721,6 +777,7 @@ if haskey(kwargs,:design)
         rftu_path[2,1]=rf_path[2,1]+rfpf_d/(2*Sn);
         rftu_path[2,2]=rf_path[2,2];
 
+        #Zapata
         #coordenadas de los nodos en cara inferior de la zapata
         xpi=0; ypi=0;
         xps=b1+t2+t1+t3+b2; yps=0;
@@ -794,7 +851,7 @@ if haskey(kwargs,:design)
                 $(draw_polyline_lcode(Array(rzi_path),1,2,3,4,ops="line width=0.2mm"))
                 $(draw_polyline_lcode(Array(rzs_path),1,2,3,4,ops="line width=0.2mm"))
                 $dap
-                $(draw_leader_lcode((1.4,0.5),pos="below right",label="\$\\phi5/8''@0.15m\$",type="circle",diameter=0.04*esc))
+                $labels
             \\end{tikzpicture}
           \\caption{Distribución de refuerzo}
         	\\label{fig:distr}
@@ -1676,7 +1733,7 @@ function draw_leader_lcode(p::Tuple{T,N};kwargs...) where {T<:Real, N<:Real}
     elseif pos=="below left" || pos=="left below"
         out*="\\draw $draw_ops ($x,$y)--++(-135:0.25)--++(0:-0.25) node[left]{\\tiny{$label}};"
     elseif pos=="above left" || pos=="left above"
-        out*="\\draw $draw_ops ($x,$y)--++(135:0.25)--++(0:-0.25) node[right]{\\tiny{$label}};"
+        out*="\\draw $draw_ops ($x,$y)--++(135:0.25)--++(0:-0.25) node[left]{\\tiny{$label}};"
     end
 
     return out;
