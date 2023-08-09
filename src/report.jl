@@ -1,4 +1,4 @@
-#revisión 0.4.1 04-08-2023, 23:50 Julia 1.9.2
+#revisión 0.4.2 09-08-2023, 00:15 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -11,7 +11,18 @@ b2=mywall.b2;
 grav=mywall.model;
 prop=wall_forces(grav);
 rsf=soil_rankine_forces_rs(grav);
-lsf=soil_rankine_forces_ls(grav);lsf[1,5]=0;#para ignorar el momento resistente de la fuerza pasiva
+lsf=soil_rankine_forces_ls(grav);
+
+ignore_pasive_moments=0;#para ignorar el momento resistente de la fuerza pasiva
+#se ignora cuando ignore_pasive_moments=1
+if haskey(kwargs,:ignore_pasive_moments)
+    ignore_pasive_moments=kwargs[:ignore_pasive_moments];
+    if typeof(ignore_pasive_moments)!=Int64
+        error("ignore_pasive_moments no es del tipo esperado")
+    end
+    if ignore_pasive_moments==1 lsf[1,5]=0; end
+end
+
 uf=uload_rankine_forces_rs(grav,mywall.q,mywall.alpha);
 factors=check_stab_wt1(grav,prop,rsf,lsf,arsf=uf);
 
@@ -565,6 +576,7 @@ if haskey(kwargs,:design)
         rp_path[4,2]=ypi-hz+rz;
         #obteniendo coordenadas para el acero de refuerzo adicional en la cara posterior
         #de la pantalla
+        draw_help="";
         if draw_aditional_path==1
             rpa_path=VolatileArray(zeros(Float64,0),0,0);
             rpa_path[1,1]=rp_path[2,1]-.03;
@@ -697,6 +709,10 @@ if haskey(kwargs,:design)
                     draw_help=draw_along_path_lcode(help_path,rfpp_d/2,S);
                 end
             end
+            #Acotando el acero adicional
+            labels*="\\Cote[-0.35cm] {($(b1),$hz)}{($(b1),$(hz+Lc))}{\\small{$Lc m}}[
+                Cote node/.append style={}];
+                ";
         else
             draw_help="";
             dap="";
@@ -777,6 +793,41 @@ if haskey(kwargs,:design)
         rftu_path[2,1]=rf_path[2,1]+rfpf_d/(2*Sn);
         rftu_path[2,2]=rf_path[2,2];
 
+        #etiquetas de acero de temperatura en la pantalla---------------------
+        #frontal
+        S=trunc(rfpf_a/(Astd*2/3)*100)/100;#abajo
+        labeln="\$A_{st}:$rfpf_n @ $S\$";
+        labels*="\\draw[decoration={brace},decorate]
+        ($(b1-1),$hz) -- node[left] {\\tiny{$labeln}} ($(b1-1),$(hz+hp/3));
+        "
+        S=trunc(rfpf_a/(Astm*2/3)*100)/100;#intermedio
+        labeln="\$A_{st}:$rfpf_n @ $S\$";
+        labels*="\\draw[decoration={brace},decorate]
+        ($(b1-1),$(hz+hp/3)) -- node[left] {\\tiny{$labeln}} ($(b1-1),$(hz+2*hp/3));
+        "
+        S=trunc(rfpf_a/(Astu*2/3)*100)/100;#arriba
+        labeln="\$A_{st}:$rfpf_n @ $S\$";
+        labels*="\\draw[decoration={brace},decorate]
+        ($(b1-1),$(hz+2*hp/3)) -- node[left] {\\tiny{$labeln}} ($(b1-1),$(hz+hp));
+        "
+
+        #posterior
+        S=trunc(rfpp_a/(Astd/3)*100)/100;#abajo
+        labeln="\$A_{st}:$rfpp_n @ $S\$";
+        labels*="\\draw[decoration={brace,mirror},decorate]
+        ($(b1+t2+t1+t3+1),$hz) -- node[right] {\\tiny{$labeln}} ($(b1+t2+t1+t3+1),$(hz+hp/3));
+        "
+        S=trunc(rfpp_a/(Astm/3)*100)/100;#intermedio
+        labeln="\$A_{st}:$rfpp_n @ $S\$";
+        labels*="\\draw[decoration={brace,mirror},decorate]
+        ($(b1+t2+t1+t3+1),$(hz+hp/3)) -- node[right] {\\tiny{$labeln}} ($(b1+t2+t1+t3+1),$(hz+2*hp/3));
+        "
+        S=trunc(rfpp_a/(Astu/3)*100)/100;#arriba
+        labeln="\$A_{st}:$rfpp_n @ $S\$";
+        labels*="\\draw[decoration={brace,mirror},decorate]
+        ($(b1+t2+t1+t3+1),$(hz+2*hp/3)) -- node[right] {\\tiny{$labeln}} ($(b1+t2+t1+t3+1),$(hz+hp));
+        "
+
         #Zapata
         #coordenadas de los nodos en cara inferior de la zapata
         xpi=0; ypi=0;
@@ -792,6 +843,7 @@ if haskey(kwargs,:design)
         rzi_path[3,2]=rz;
         rzi_path[4,1]=xps-rz;
         rzi_path[4,2]=rz+.15;
+
         #para refuerzo transversal
         S=trunc(rfpz_a/(0.0018*hz)*100)/100
         rzit_path=VolatileArray(zeros(Float64,0),0,0);#para refuerzo transversal
@@ -802,6 +854,21 @@ if haskey(kwargs,:design)
         dist=hypot(rzit_path[1,1]-rzit_path[2,1],rzit_path[1,2]-rzit_path[2,2]);
         nb=trunc(dist/S);
         rzit_path[1,1]+=(dist-nb*S)/2;
+
+        #etiqueta de acero longitudinal y transversal-----------------------------------
+        nb-=trunc(b2/2/S);#se quiere la etiqueta en la mitad de b2
+        labeln="\$$rfpz_n @ $S\$"#etiqueta transversal
+        labelx=rzit_path[1,1]+nb*S;
+        labely=rzit_path[1,2];
+        #Obteniendo la escala para el dibujo de muro con refuerzo
+        esc=15/(b1+t2+t1+t3+b2+2.5);
+        labels*=draw_leader_lcode((labelx,labely),label=labeln,pos="below left",type="circle",diameter=0.04*esc);
+
+        labelx+=S/2;
+        labely-=rfpz_d/2;
+        S=trunc(rfpz_a/(Aszf)*100)/100
+        labeln="\$$rfpz_n @ $S\$";#etiqueta longitudinal
+        labels*=draw_leader_lcode((labelx,labely),label=labeln,pos="below right");
 
         #coordenadas de los nodos en cara superior de la zapata
         xpi=0; ypi=hz;
@@ -828,8 +895,18 @@ if haskey(kwargs,:design)
         nb=trunc(dist/S);
         rzst_path[1,1]+=(dist-nb*S)/2;
 
-        #Obteniendo la escala para el dibujo de muro con refuerzo
-        esc=15/(b1+t2+t1+t3+b2+2.5);
+        #etiqueta de acero longitudinal y transversal-----------------------------------
+        nb-=trunc(b2/2/S);#se quiere la etiqueta en la mitad de b2
+        labeln="\$$rfpz_n @ $S\$"#etiqueta transversal
+        labelx=rzst_path[1,1]+nb*S;
+        labely=rzst_path[1,2];
+        labels*=draw_leader_lcode((labelx,labely),label=labeln,pos="above left",type="circle",diameter=0.04*esc);
+
+        labelx+=S/2;
+        labely+=rfpz_d/2;
+        S=trunc(rfpz_a/(Aszp)*100)/100
+        labeln="\$$rfpz_n @ $S\$";#etiqueta longitudinal
+        labels*=draw_leader_lcode((labelx,labely),label=labeln);
 
         dsgn*="\\begin{figure}[H]
         	\\centering
@@ -1353,7 +1430,7 @@ function draw_soil_surface_lcode(wall::typeIwall,offs::Real=0)
     if (abs(x2-x1)>1e-6)
         #pendiente de la recta 5->9
         m=(y2-y1)/(x2-x1);
-        x2=x1+(model.D-y1)/m;
+        x2=x1+(wall.D-y1)/m;
     end
     out*="\\draw (-.5,$(wall.D))--($(x2),$(wall.D));"
 end
@@ -1671,7 +1748,7 @@ function draw_leader_lcode(p::Tuple{T,N};kwargs...) where {T<:Real, N<:Real}
     #pos::String, que puede ser right, left, above, below, o la combinación de estos
     #label::String, La etiqueta del indicador
     #type::String, tipo de indicador, arrow o circle
-    #diameter<:Real, diametro del circulo, suncionará solo si se elige el tipo circle
+    #diameter<:Real, diametro del circulo, funcionará solo si se elige el tipo circle
     out="";
     x=p[1];
     y=p[2];

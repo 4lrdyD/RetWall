@@ -1,4 +1,4 @@
-#revisión 0.1.1 18-12-2021, 01:35 Julia1.6.4
+#revisión 0.1.2 09-08-2023, 00:15 Julia1.9.2
 import LinearAlgebra: norm
 export VolatileArray
 mutable struct VolatileArray{T,N}<:AbstractArray{T,N}
@@ -119,8 +119,8 @@ ambas dimensiones son compatibles se insertarán columnas a menos que `dim` sea
 ingresado, `dim=1` agrega filas, `dim` solo se comprueba cuando ambas
 dimensiones de `n` son compatibles.
 """
-function Base.append!(x::VolatileArray{T,2},n::Array{T,N}; dim::Int64=2
-    ) where {T<:Real,N}
+function Base.append!(x::VolatileArray{T,2},n::Array{M,N}; dim::Int64=2
+    ) where {T<:Real,M<:Real,N}
     dimy=size(x)[1];
     dimx=size(x)[2];
 

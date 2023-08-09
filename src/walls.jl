@@ -1,4 +1,4 @@
-#revisión 0.2.1 19-07-2023, 23:25 Julia1.6.4
+#revisión 0.2.2 09-08-2023, 00:15 Julia1.9.2
 export Wmodel, typeIwall, gravity_wall,addsoil!, addmat!,wall_forces,
         soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1,
         uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces,
@@ -244,8 +244,8 @@ function gravity_wall(;hp::Real, hz::Real, t1::Real, t2::Real, t3::Real,
     end
 end
 
-function add_field_row(field::VolatileArray{T,2},prop::Array{T,N}) where {
-    T<:Real,N}
+function add_field_row(field::VolatileArray{T,2},prop::Array{M,N}) where {
+    T<:Real,M<:Real,N}
     dimy=size(field)[1];
     dimx=size(field)[2];
     ly=size(prop)[1];
@@ -281,7 +281,7 @@ capacidad portante del terreno (Kn/m2 5ta columna).
 
 Devuelve el rango de índices correspondientes a las propiedades agregadas.
 """
-addsoil!(model::Wmodel{T},prop::Array{T,N}) where {T<:Real,N}=
+addsoil!(model::Wmodel{T},prop::Array{M,N}) where {T<:Real,M<:Real,N}=
     add_field_row(model.soilprop,prop);
 
 """
@@ -293,7 +293,7 @@ Alternativamente puede ingresarse la resistencia a la fluencia fy  (en KPa 4ta c
 
 Devuelve el rango de índices correspondientes a las propiedades agregadas.
 """
-addmat!(model::Wmodel{T},prop::Array{T,N}) where {T<:Real,N}=
+addmat!(model::Wmodel{T},prop::Array{M,N}) where {T<:Real,M<:Real,N}=
     add_field_row(model.matprop,prop);
 
 """
