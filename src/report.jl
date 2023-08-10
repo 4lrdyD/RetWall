@@ -1,4 +1,4 @@
-#revisión 0.4.2 09-08-2023, 00:15 Julia 1.9.2
+#revisión 0.4.3 09-08-2023, 23:55 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
 hp=mywall.hp;
@@ -10,7 +10,7 @@ b1=mywall.b1;
 b2=mywall.b2;
 grav=mywall.model;
 prop=wall_forces(grav);
-rsf=soil_rankine_forces_rs(grav);
+rsf=soil_rankine_forces_rs(grav,alpha=mywall.alpha);
 lsf=soil_rankine_forces_ls(grav);
 
 ignore_pasive_moments=0;#para ignorar el momento resistente de la fuerza pasiva
@@ -133,6 +133,14 @@ if haskey(kwargs,:design)
         rfp_n="\\phi5/8''";#diámetro nominal del refuerzo en la pantalla
         rfp_d=1.588e-2;#diámetro del refuerzo
         rfp_a=2e-4;#área del refuerzo
+        #rlist es una lista opcional de nombres, diámetros y áreas  de acero de refuerzo
+        #tendrá que ser del tipo Array{Any,2}, con al menos 3 columnas y 4 filas
+        #la primera columna, tendrá el nombre del acero de refuerzo
+        #la segunda columna tendrá el diámetro en m
+        #y la tercera columna tendrá el área en m2
+        #las primeras cutro filas corresponderán a: Refuerzo en la pantalla,
+        #refuerzo en la zapata, refuerzo por temperatura en la cara frontal de
+        #la pantalla y refuerzo por temperatura en la parte posterior de la pantalla
         if haskey(kwargs,:rlist)
             rfp=kwargs[:rlist];
             if typeof(rfp)==Array{Any,2}
@@ -163,7 +171,7 @@ if haskey(kwargs,:design)
 
         #obteniendo fy y fc, las palabras clave fyid y fcid
         #fyid y fcid son lo indices de material para el acero y el concreto
-        #dentro del campo matprop del modelo, dichos materiales den¿berán contener
+        #dentro del campo matprop del modelo, dichos materiales deberán contener
         #la resistencia a la compresión para el concreto, y el límite de fluencia
         #para el acero.
         fy=420000;fc=21000;#valores por defecto
@@ -1059,7 +1067,8 @@ a="
     \\begin{tikzpicture}[scale=$esc]
         $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
         $(draw_polyline_lcode(Array(grav.nod),5,8,ops="dashed"))
-        $(draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed"))
+        $(t3!=0 ? draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed") : "")
+        $(t2!=0 ? draw_polyline_lcode(Array(grav.nod),6,9,ops="dashed") : "")
         $(draw_elm_label_lcode(prop))
         $(draw_soilp_rs_lcode(grav,-1,1))
         $(draw_soilp_ls_lcode(grav,maximum(grav.nod[:,1])+1,-0.5-mywall.D/2))
@@ -1228,7 +1237,7 @@ function draw_elm_label_lcode(prop::VolatileArray{<:Real,2})
     #debe ser insertado dentro de un entorno tikzpicture
     out="";
     for i in 1:size(prop)[1]
-        out*="\\draw ($(prop[i,2]),$(prop[i,3]))node{\\small{$i}};
+        out*="\\draw ($(prop[i,2]),$(prop[i,3]))node{\\tiny{$i}};
         \\draw ($(prop[i,2]),$(prop[i,3]))circle(0.075cm);
         "
     end
