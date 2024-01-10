@@ -508,7 +508,7 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real};alpha::Real=0)
         h=yu-yd;
         err="la línea resultante para aplicar la teoría de presión de tierra "
         err1="de Rankine, debe ser vertical y positiva en todos los estratos"
-        if h<=0 || xu-xd>1e6
+        if h<=0 || xu-xd>1e-6
             error(err*err1);
         end
         #obteniendo propiedades
@@ -591,7 +591,7 @@ function soil_rankine_forces_ls(model::Wmodel{<:Real})
         h=yu-yd;
         err="la línea resultante para aplicar la teoría de presión de tierra "
         err1="de Rankine, debe ser vertical y positiva en todos los estratos"
-        if h<=0 || xu-xd>1e6
+        if h<=0 || xu-xd>1e-6
             error(err*err1);
         end
         #obteniendo propiedades
@@ -673,7 +673,7 @@ function uload_rankine_forces_rs(model::Wmodel{<:Real},uload::Real,alpha::Real)
         h=yu-yd;
         err="la línea resultante para aplicar la teoría de presión de tierra "
         err1="de Rankine, debe ser vertical y positiva en todos los estratos"
-        if h<=0 || xu-xd>1e6
+        if h<=0 || xu-xd>1e-6
             error(err*err1);
         end
         #obteniendo propiedades
