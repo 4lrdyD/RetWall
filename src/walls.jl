@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 #revisión 0.2.2 09-08-2023, 00:15 Julia1.9.2
+=======
+#revisión 0.2.3 10-01-2024, 20:25 Julia1.9.2
+>>>>>>> 1974a5c (hola)
 export Wmodel, typeIwall, gravity_wall,addsoil!, addmat!,wall_forces,
         soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1,
         uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces,
