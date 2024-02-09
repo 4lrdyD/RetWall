@@ -1,8 +1,8 @@
-#revisión 0.2.3 10-01-2024, 20:25 Julia1.9.2
+#revisión 0.2.4 09-02-2024, 00:15 Julia1.9.2
 export Wmodel, typeIwall, gravity_wall,addsoil!, addmat!,wall_forces,
         soil_rankine_forces_rs,soil_rankine_forces_ls,check_stab_wt1,
         uload_rankine_forces_rs, uload_rankine_forces_ls, combine_soil_forces,
-        orient_model!, rebuild!
+        orient_model!, rebuild!,soil_coulomb_forces_rs
 mutable struct Wmodel{T}
     #nudos para el muro
     nod::VolatileArray{T,2}
@@ -551,6 +551,74 @@ function soil_rankine_forces_rs(model::Wmodel{<:Real};alpha::Real=0)
             out[i,6]=out[i,2]*out[i,3];#momento de la fuerza vertical
             out[i,7]=ka;#coeficiente de presión
         end
+        qload+=gamma*h;
+    end
+    return out;
+end
+
+function soil_coulomb_forces_rs(model::Wmodel{<:Real};alpha::Real=0)
+    nel=size(model.pliners)[1];
+    #declarando el objeto de salida
+    #será una matriz de nelx6, por cada fila los datos serán
+    #fuerza en la dirección horizontal, fuerza en la dirección vertical,
+    #brazo horizontal, brazo vertical, Momento producido por la fuerza
+    #horizontal, momento producido por la fuerza vertical y el coeficiente de
+    #presión.
+    #Inicialmente la matriz será vacia (0x0)
+    #los elementos se irán ingresando según se calculen los valores
+    #correspondientes.
+    out=VolatileArray(zeros(0,0));
+    qload=0.0;#para un estrato inferior, los estratos superiores actuarán como
+              #carga distribuida sobre este.
+
+    #declarando yd y xd;
+    yd=0.0;xd=0;
+    for i in 1:nel
+        #coordenadas de los nudos
+        n1=model.pliners[i,1];
+        n2=model.pliners[i,2];
+        xu=model.pnod[n1,1];
+        yu=model.pnod[n1,2];
+        err="Las coordenadas no son consistentes con el estrato anterior";
+        if i!=1
+            if yu!=yd && xu!=xd#validación necesaria de las coordenadas
+                error(err);
+            end
+        end
+        xd=model.pnod[n2,1];
+        yd=model.pnod[n2,2];
+        #obteniendo la altura del estrato, el ángulo de la pared posterior con la horizontal
+        #y validando valores
+        h=yu-yd;
+        b=xd-xu;
+        err="la línea resultante para aplicar la teoría de presión de tierra "
+        err1="de Coulomb, debe ser positiva en todos los estratos"
+        b==0 ? beta=90 : b<0 ? beta=atand(h/b)+180 : beta=atand(h/b);
+        if h<=0
+            error(err*err1);
+        end
+        #obteniendo propiedades
+        pid=model.pliners[i,3];
+        fi=model.soilprop[pid,1];
+        c=model.soilprop[pid,2];
+        gamma=model.soilprop[pid,3];
+        delta=2*fi/3;
+        if c!=0
+            err="Advertencia: para la aplicación de la teoría de presión de tierra"
+            err1="de Coulomb, se ignorarán las cohesiones"
+            @warn err*err1;
+        end
+        ka=ka_coulomb(fi,delta,beta,alpha);
+        pa=0.5*gamma*ka*h^2;
+        paq=ka*h*qload*sind(beta)/sind(beta+alpha);
+        pat=pa+paq;
+        out[i,1]=pat*cosd(90-beta+delta);#fuerza horizontal
+        out[i,2]=pat*sind(90-beta+delta);#fuerza vertical
+        out[i,4]=yd+(pa*h/3+paq*h/2)/pat;#brazo vertical
+        out[i,3]=beta==90 ? xd : xd-(out[i,4]-yd)/tand(beta);#brazo horizontal
+        out[i,5]=out[i,1]*out[i,4];#momento de la fuerza horizontal
+        out[i,6]=out[i,2]*out[i,3];#momento de la fuerza vertical
+        out[i,7]=ka;#coeficiente de presión
         qload+=gamma*h;
     end
     return out;
