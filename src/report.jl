@@ -1,688 +1,635 @@
-#revisión 0.4.3 09-08-2023, 23:55 Julia 1.9.2
+#revisión 0.4.4 10-02-2024, 01:25 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
-hp=mywall.hp;
-hz=mywall.hz;
-t1=mywall.t1;
-t2=mywall.t2;
-t3=mywall.t3;
-b1=mywall.b1;
-b2=mywall.b2;
-grav=mywall.model;
-prop=wall_forces(grav);
-rsf=soil_rankine_forces_rs(grav,alpha=mywall.alpha);
-lsf=soil_rankine_forces_ls(grav);
-
-ignore_pasive_moments=0;#para ignorar el momento resistente de la fuerza pasiva
-#se ignora cuando ignore_pasive_moments=1
-if haskey(kwargs,:ignore_pasive_moments)
-    ignore_pasive_moments=kwargs[:ignore_pasive_moments];
-    if typeof(ignore_pasive_moments)!=Int64
-        error("ignore_pasive_moments no es del tipo esperado")
+    if haskey(kwargs,:analysis_type)
+        analysis_type=kwargs[:analysis_type];
+        if typeof(analysis_type)==String
+            if analysis_type=="Coulomb"
+                coulomb_report(mywall;kwargs...);
+            elseif analysis_type=="Rankine"
+                rankine_report(mywall;kwargs...);
+            else
+                error("analysis_type no contiene un tipo de análisis válido");
+            end
+        else
+            error("analysis_type no es del tipo esperado");
+        end
     end
-    if ignore_pasive_moments==1 lsf[1,5]=0; end
+    rankine_report(mywall;kwargs...);
 end
 
-uf=uload_rankine_forces_rs(grav,mywall.q,mywall.alpha);
-factors=check_stab_wt1(grav,prop,rsf,lsf,arsf=uf);
+function rankine_report(mywall::typeIwall;kwargs...)
+    hp=mywall.hp;
+    hz=mywall.hz;
+    t1=mywall.t1;
+    t2=mywall.t2;
+    t3=mywall.t3;
+    b1=mywall.b1;
+    b2=mywall.b2;
+    grav=mywall.model;
+    prop=wall_forces(grav);
+    rsf=soil_rankine_forces_rs(grav,alpha=mywall.alpha);
+    lsf=soil_rankine_forces_ls(grav);
 
-#---------------------------------------------
-#expresión para factor de seguridad por volteo
-Mr=sum(prop[:,5]);
-Mrs="$(round(Mr,digits=2))"
-Mr=sum(rsf[:,6]);
-if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
-Mr=sum(lsf[:,5]);
-if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
-Mr=sum(uf[:,6]);
-if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
-#los momentos actuantes se encuetran en la 5ta columna de rsf y 6ta columna
-#de lsf
-Ma=sum(rsf[:,5]);
-Mas="$(round(Ma,digits=2))";
-Ma=sum(lsf[:,6]);
-if Ma!=0 Mas*="+$(round(Ma,digits=2))" end
-Ma=sum(uf[:,5]);
-if Ma!=0 Mas*="+$(round(Ma,digits=2))" end
-
-#-------------------------------------------------------
-#expresión para factor de seguridad contra deslizamiento
-vf=sum(prop[:,4]);
-vfs="($(round(vf,digits=2))";
-vf=sum(rsf[:,2]);
-if vf!=0 vfs*="+$(round(vf,digits=2))" end
-vf=sum(lsf[:,2]);
-if vf!=0 vfs*="+$(round(vf,digits=2))" end
-vf=sum(uf[:,2]);
-if vf!=0 vfs*="+$(round(vf,digits=2))" end
-vfs*=")"; vfs1=vfs;
-#obteniendo las propiedas de suelo
-#obteniendo el último estrato del campo plinels
-id=grav.plinels[end,3];
-fi=grav.soilprop[id,1];
-c=grav.soilprop[id,2];
-vfs*="\\tan(\\frac{2}{3}\\times$(round(fi,digits=2))^\\circ)";
-B=round(t1+t2+t3+b1+b2,digits=2);
-vfs*="+$B\\times\\frac{2}{3}\\times$(round(c,digits=2))";
-#el empuje pasivo (resistente), primera columna de lsf
-pp=sum(lsf[:,1]);
-vfs*="+$(round(pp,digits=2))";
-#empuje activo (actuante), primera columna de rsf
-pa=sum(rsf[:,1]);
-pas="$(round(pa,digits=2))";
-pa=sum(uf[:,1]);
-if pa!=0 pas*="+$(round(pa,digits=2))" end
-
-#-------------------------------
-#texto o mensaje de verificación Ok!! cuando cumple.
-fsvs=factors[1]>2 ? ">2\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
-fsds=factors[2]>1.5 ? ">1.5\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
-es=factors[3]<B/6 ? "<\\dfrac{B}{6}=\\dfrac{$(round(B,digits=2))}{6}=$(round(B/6,digits=3))" : "";
-#revisando si se ingreso la capacidad de carga
-ncol=size(grav.soilprop)[2];
-qa=0;
-if ncol>=5
-    qa=grav.soilprop[id,5];
- end
-qps=factors[4]<qa && factors[5]<qa ?
-    "<$(round(qa,digits=2))KN/m^2\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" :
-    "";
-
-#DISEÑO_________________________________________________________________________
-#diseño de refuerzo, se activa mediante la inclusión de la palabra clave design=1
-dsgn=""#salida para cuando se requiere diseño de refuerzo
-if haskey(kwargs,:design)
-    design=kwargs[:design];
-    if design==1
-        if size(grav.pliners)[1]>1
-            err="Por ahora, el diseño solo está preparado para suelos de solo un estrato";
-            err*=", si se ingresaron más estratos, solo se usará las propiedades";
-            err*=" del primer estrato y por tanto los resultados podrían ser inexactos"
-            @warn err
+    ignore_pasive_moments=0;#para ignorar el momento resistente de la fuerza pasiva
+    #se ignora cuando ignore_pasive_moments=1
+    if haskey(kwargs,:ignore_pasive_moments)
+        ignore_pasive_moments=kwargs[:ignore_pasive_moments];
+        if typeof(ignore_pasive_moments)!=Int64
+            error("ignore_pasive_moments no es del tipo esperado")
         end
-        @inbounds gamma=grav.soilprop[grav.pliners[1,3],3];#peso unitario
-        @inbounds Ka=rsf[1,end];#coeficiente de presión activa
-        Pap=0.5*gamma*hp^2*Ka;#efecto del suelo de relleno
-        Paqp=Ka*hp*mywall.q/cosd(mywall.alpha);#efecto de carga distribuida
-        Patp=Pap+Paqp;#Empuje total
-        zm=(Pap*hp/3+Paqp*hp/2)/Patp;#punto de aplicación;
-        ph=Patp*cosd(mywall.alpha);#componente horizontal
-        pv=Patp*sind(mywall.alpha);#componente verticales
+        if ignore_pasive_moments==1 lsf[1,5]=0; end
+    end
 
-        fcv=1.7#factor de carga viva
-        if haskey(kwargs,:fcv)#si se ingreso un factor de carga viva diferente
-            fcv=kwargs[:fcv];
-            if typeof(fcv)<:Real
-                if fcv<0 error("fcv debe ser real positivo") end
-            else
-                error("fcv no es del tipo esperado")
+    uf=uload_rankine_forces_rs(grav,mywall.q,mywall.alpha);
+    factors=check_stab_wt1(grav,prop,rsf,lsf,arsf=uf);
+
+    #---------------------------------------------
+    #expresión para factor de seguridad por volteo
+    Mr=sum(prop[:,5]);
+    Mrs="$(round(Mr,digits=2))"
+    Mr=sum(rsf[:,6]);
+    if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
+    Mr=sum(lsf[:,5]);
+    if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
+    Mr=sum(uf[:,6]);
+    if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
+    #los momentos actuantes se encuetran en la 5ta columna de rsf y 6ta columna
+    #de lsf
+    Ma=sum(rsf[:,5]);
+    Mas="$(round(Ma,digits=2))";
+    Ma=sum(lsf[:,6]);
+    if Ma!=0 Mas*="+$(round(Ma,digits=2))" end
+    Ma=sum(uf[:,5]);
+    if Ma!=0 Mas*="+$(round(Ma,digits=2))" end
+
+    #-------------------------------------------------------
+    #expresión para factor de seguridad contra deslizamiento
+    vf=sum(prop[:,4]);
+    vfs="($(round(vf,digits=2))";
+    vf=sum(rsf[:,2]);
+    if vf!=0 vfs*="+$(round(vf,digits=2))" end
+    vf=sum(lsf[:,2]);
+    if vf!=0 vfs*="+$(round(vf,digits=2))" end
+    vf=sum(uf[:,2]);
+    if vf!=0 vfs*="+$(round(vf,digits=2))" end
+    vfs*=")"; vfs1=vfs;
+    #obteniendo las propiedas de suelo
+    #obteniendo el último estrato del campo plinels
+    id=grav.plinels[end,3];
+    fi=grav.soilprop[id,1];
+    c=grav.soilprop[id,2];
+    vfs*="\\tan(\\frac{2}{3}\\times$(round(fi,digits=2))^\\circ)";
+    B=round(t1+t2+t3+b1+b2,digits=2);
+    vfs*="+$B\\times\\frac{2}{3}\\times$(round(c,digits=2))";
+    #el empuje pasivo (resistente), primera columna de lsf
+    pp=sum(lsf[:,1]);
+    vfs*="+$(round(pp,digits=2))";
+    #empuje activo (actuante), primera columna de rsf
+    pa=sum(rsf[:,1]);
+    pas="$(round(pa,digits=2))";
+    pa=sum(uf[:,1]);
+    if pa!=0 pas*="+$(round(pa,digits=2))" end
+
+    #-------------------------------
+    #texto o mensaje de verificación Ok!! cuando cumple.
+    fsvs=factors[1]>2 ? ">2\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
+    fsds=factors[2]>1.5 ? ">1.5\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
+    es=factors[3]<B/6 ? "<\\dfrac{B}{6}=\\dfrac{$(round(B,digits=2))}{6}=$(round(B/6,digits=3))" : "";
+    #revisando si se ingreso la capacidad de carga
+    ncol=size(grav.soilprop)[2];
+    qa=0;
+    if ncol>=5
+        qa=grav.soilprop[id,5];
+    end
+    qps=factors[4]<qa && factors[5]<qa ?
+        "<$(round(qa,digits=2))KN/m^2\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" :
+        "";
+
+    #DISEÑO_________________________________________________________________________
+    #diseño de refuerzo, se activa mediante la inclusión de la palabra clave design=1
+    dsgn=""#salida para cuando se requiere diseño de refuerzo
+    if haskey(kwargs,:design)
+        design=kwargs[:design];
+        if design==1
+            if size(grav.pliners)[1]>1
+                err="Por ahora, el diseño solo está preparado para suelos de solo un estrato";
+                err*=", si se ingresaron más estratos, solo se usará las propiedades";
+                err*=" del primer estrato y por tanto los resultados podrían ser inexactos"
+                @warn err
             end
-        end
-        Mu=fcv*ph*zm;#momento último
+            @inbounds gamma=grav.soilprop[grav.pliners[1,3],3];#peso unitario
+            @inbounds Ka=rsf[1,end];#coeficiente de presión activa
+            Pap=0.5*gamma*hp^2*Ka;#efecto del suelo de relleno
+            Paqp=Ka*hp*mywall.q/cosd(mywall.alpha);#efecto de carga distribuida
+            Patp=Pap+Paqp;#Empuje total
+            zm=(Pap*hp/3+Paqp*hp/2)/Patp;#punto de aplicación;
+            ph=Patp*cosd(mywall.alpha);#componente horizontal
+            pv=Patp*sind(mywall.alpha);#componente verticales
 
-        rp=0.04;#recubrimiento en la pantalla
-        if haskey(kwargs,:rp)
-            rp=kwargs[:rp];
-            if typeof(rp)<:Real
-                if rp<0 error("rp debe ser real positivo") end
-            else
-                error("rp no es del tipo esperado")
-            end
-        end
-
-        rfp_n="\\phi5/8''";#diámetro nominal del refuerzo en la pantalla
-        rfp_d=1.588e-2;#diámetro del refuerzo
-        rfp_a=2e-4;#área del refuerzo
-        #rlist es una lista opcional de nombres, diámetros y áreas  de acero de refuerzo
-        #tendrá que ser del tipo Array{Any,2}, con al menos 3 columnas y 4 filas
-        #la primera columna, tendrá el nombre del acero de refuerzo
-        #la segunda columna tendrá el diámetro en m
-        #y la tercera columna tendrá el área en m2
-        #las primeras cutro filas corresponderán a: Refuerzo en la pantalla,
-        #refuerzo en la zapata, refuerzo por temperatura en la cara frontal de
-        #la pantalla y refuerzo por temperatura en la parte posterior de la pantalla
-        if haskey(kwargs,:rlist)
-            rfp=kwargs[:rlist];
-            if typeof(rfp)==Array{Any,2}
-                rfp_n=rfp[1,1];
-                rfp_d=rfp[1,2];
-                rfp_a=rfp[1,3];
-                if typeof(rfp_n)==String && typeof(rfp_d)<:Real && typeof(rfp_a)<:Real
-                    if rfp_d<0 || rfp_a<0 error("diámetro y área de refuerzo deben ser positivos") end
+            fcv=1.7#factor de carga viva
+            if haskey(kwargs,:fcv)#si se ingreso un factor de carga viva diferente
+                fcv=kwargs[:fcv];
+                if typeof(fcv)<:Real
+                    if fcv<0 error("fcv debe ser real positivo") end
                 else
-                    error("uno o mas componentes de rlist no son del tipo esperado")
+                    error("fcv no es del tipo esperado")
                 end
-            else
-                error("rlist no es del tipo esperado")
             end
-        end
-        h=t1+t2+t3;
-        d=h-rp-rfp_d/2;
+            Mu=fcv*ph*zm;#momento último
 
-        phim=0.9;#factor de reducción de resistencia (puede ingresarse como palabra clave)
-        if haskey(kwargs,:phim)
-            phim=kwargs[:phim];
-            if typeof(phim)<:Real
-                if phim<0 error("phim debe ser real positivo") end
-            else
-                error("phim no es del tipo esperado")
+            rp=0.04;#recubrimiento en la pantalla
+            if haskey(kwargs,:rp)
+                rp=kwargs[:rp];
+                if typeof(rp)<:Real
+                    if rp<0 error("rp debe ser real positivo") end
+                else
+                    error("rp no es del tipo esperado")
+                end
             end
-        end
 
-        #obteniendo fy y fc, las palabras clave fyid y fcid
-        #fyid y fcid son lo indices de material para el acero y el concreto
-        #dentro del campo matprop del modelo, dichos materiales deberán contener
-        #la resistencia a la compresión para el concreto, y el límite de fluencia
-        #para el acero.
-        fy=420000;fc=21000;#valores por defecto
-        if haskey(kwargs,:fyid)
-            fyid=kwargs[:fyid];
-            if typeof(fyid)==Int64
-                if fyid<0 error("fyid debe ser entero positivo") end
-                fy=grav.matprop[fyid,4];
-            else
-                error("fyid no es del tipo esperado")
+            rfp_n="\\phi5/8''";#diámetro nominal del refuerzo en la pantalla
+            rfp_d=1.588e-2;#diámetro del refuerzo
+            rfp_a=2e-4;#área del refuerzo
+            #rlist es una lista opcional de nombres, diámetros y áreas  de acero de refuerzo
+            #tendrá que ser del tipo Array{Any,2}, con al menos 3 columnas y 4 filas
+            #la primera columna, tendrá el nombre del acero de refuerzo
+            #la segunda columna tendrá el diámetro en m
+            #y la tercera columna tendrá el área en m2
+            #las primeras cuatro filas corresponderán a: Refuerzo en la pantalla,
+            #refuerzo en la zapata, refuerzo por temperatura en la cara frontal de
+            #la pantalla y refuerzo por temperatura en la parte posterior de la pantalla
+            if haskey(kwargs,:rlist)
+                rfp=kwargs[:rlist];
+                if typeof(rfp)==Array{Any,2}
+                    rfp_n=rfp[1,1];
+                    rfp_d=rfp[1,2];
+                    rfp_a=rfp[1,3];
+                    if typeof(rfp_n)==String && typeof(rfp_d)<:Real && typeof(rfp_a)<:Real
+                        if rfp_d<0 || rfp_a<0 error("diámetro y área de refuerzo deben ser positivos") end
+                    else
+                        error("uno o mas componentes de rlist no son del tipo esperado")
+                    end
+                else
+                    error("rlist no es del tipo esperado")
+                end
             end
-        end
+            h=t1+t2+t3;
+            d=h-rp-rfp_d/2;
 
-        if haskey(kwargs,:fcid)
-            fcid=kwargs[:fcid];
-            if typeof(fcid)==Int64
-                if fcid<0 error("fcid debe ser entero positivo") end
-                fc=grav.matprop[fcid,1];
-            else
-                error("fcid no es del tipo esperado")
+            phim=0.9;#factor de reducción de resistencia (puede ingresarse como palabra clave)
+            if haskey(kwargs,:phim)
+                phim=kwargs[:phim];
+                if typeof(phim)<:Real
+                    if phim<0 error("phim debe ser real positivo") end
+                else
+                    error("phim no es del tipo esperado")
+                end
             end
-        end
 
-        #iteración para conseguir el área de refuerzo
-        a=d/5;#valor inicial de la profundidad de la zona en compresión
-        As=long_reinforcement_area(Mu,phim,fy,d,a);
-        while abs(a-compression_zone_depth(As,fy,fc,1))>1e-6
-            a=compression_zone_depth(As,fy,fc,1);
+            #obteniendo fy y fc, las palabras clave fyid y fcid
+            #fyid y fcid son lo indices de material para el acero y el concreto
+            #dentro del campo matprop del modelo, dichos materiales deberán contener
+            #la resistencia a la compresión para el concreto, y el límite de fluencia
+            #para el acero.
+            fy=420000;fc=21000;#valores por defecto
+            if haskey(kwargs,:fyid)
+                fyid=kwargs[:fyid];
+                if typeof(fyid)==Int64
+                    if fyid<0 error("fyid debe ser entero positivo") end
+                    fy=grav.matprop[fyid,4];
+                else
+                    error("fyid no es del tipo esperado")
+                end
+            end
+
+            if haskey(kwargs,:fcid)
+                fcid=kwargs[:fcid];
+                if typeof(fcid)==Int64
+                    if fcid<0 error("fcid debe ser entero positivo") end
+                    fc=grav.matprop[fcid,1];
+                else
+                    error("fcid no es del tipo esperado")
+                end
+            end
+
+            #iteración para conseguir el área de refuerzo
+            a=d/5;#valor inicial de la profundidad de la zona en compresión
             As=long_reinforcement_area(Mu,phim,fy,d,a);
-        end
+            while abs(a-compression_zone_depth(As,fy,fc,1))>1e-6
+                a=compression_zone_depth(As,fy,fc,1);
+                As=long_reinforcement_area(Mu,phim,fy,d,a);
+            end
 
-        #elección del área de refuerzo
-        Asmin=0.0018*h;
-        if As<Asmin As=Asmin end
-        #este valor se utilizará para determinar si el dibijo de acero de Refuerzo
-        #adicional es necesario, si es necesario el valor será 1
-        draw_aditional_path=0;
-        if As==Asmin else draw_aditional_path=1; end
-        Spf=trunc(rfp_a*100/As)/100;
+            #elección del área de refuerzo
+            Asmin=0.0018*h;
+            if As<Asmin As=Asmin end
+            #este valor se utilizará para determinar si el dibijo de acero de Refuerzo
+            #adicional es necesario, si es necesario el valor será 1
+            draw_aditional_path=0;
+            if As==Asmin else draw_aditional_path=1; end
+            Spf=trunc(rfp_a*100/As)/100;
 
-        dsgn*="\\section{Diseño de refuerzo}
-        \\subsection{Pantalla}
-        \\begin{align*}
-        H_p&=$hp m &\\Rightarrow \\textit{Altura de la pantalla}\\\\
-        P_{ap}&=$(round(Pap,digits=2)) KN/m &\\Rightarrow \\textit{efecto del suelo de relleno}\\\\
-        P_{aqp}&=$(round(Paqp,digits=2)) KN/m &\\Rightarrow \\textit{efecto de la carga distribuida}\\\\
-        P_{atp}&=$(round(Patp,digits=2)) KN/m &\\Rightarrow \\textit{empuje total}\\\\
-        \\overline{z}&=$(round(zm,digits=2)) m &\\Rightarrow \\textit{punto de aplicación}\\\\
-        P_h&=$(round(ph,digits=2)) KN/m &\\Rightarrow \\textit{Componente horizontal}\\\\
-        P_v&=$(round(pv,digits=2)) KN/m &\\Rightarrow \\textit{Componente vertical}\\\\
-        M_u&=$(round(Mu,digits=2)) KN.m/m &\\Rightarrow \\textit{Momento último}\\\\
-        r&=$(round(rp,digits=3)) m &\\Rightarrow \\textit{Recubrimiento}\\\\
-        \\phi_r&=$(rfp_n) &\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
-        d&=$(round(d,digits=2)) m &\\Rightarrow \\textit{Peralte efectivo}\\\\
-        a&=$(round(a,digits=4)) m &\\Rightarrow \\textit{Profundidad de la zona en compresión}\\\\
-        A_s&=$(round(As,digits=6)) m^2 &\\Rightarrow \\textit{área de refuerzo}\\\\
-        &$(rfp_n)@$(trunc(rfp_a*100/As)/100) m&\\Rightarrow \\textit{distribución final}\\\\
-        \\end{align*}
-        ";
-        #LONGITUD DE DESARROLLO__________________________________________________
-        #se buscará el punto donde el momento sea exactamente igual a la mitad del
-        #momento último
-        Mus2=Mu/2;
-        hm=hp/2#altura inicial desde donde se iniciará la iteración
-        Pam=0.5*Ka*gamma*hm^2;#efecto del suelo de relleno
-        Paqm=Ka*hm*mywall.q/cosd(mywall.alpha);#efecto de carga distribuida
-
-        while abs(hm-(((Mus2/fcv)-(Paqm*hm/2))/(Pam/(3*hm^2)))^(1/3))>1e-7
-            hm=(((Mus2/fcv)-(Paqm*hm/2))/(Pam/(3*hm^2)))^(1/3);
+            dsgn*="\\section{Diseño de refuerzo}
+            \\subsection{Pantalla}
+            \\begin{align*}
+            H_p&=$hp m &\\Rightarrow \\textit{Altura de la pantalla}\\\\
+            P_{ap}&=$(round(Pap,digits=2)) KN/m &\\Rightarrow \\textit{efecto del suelo de relleno}\\\\
+            P_{aqp}&=$(round(Paqp,digits=2)) KN/m &\\Rightarrow \\textit{efecto de la carga distribuida}\\\\
+            P_{atp}&=$(round(Patp,digits=2)) KN/m &\\Rightarrow \\textit{empuje total}\\\\
+            \\overline{z}&=$(round(zm,digits=2)) m &\\Rightarrow \\textit{punto de aplicación}\\\\
+            P_h&=$(round(ph,digits=2)) KN/m &\\Rightarrow \\textit{Componente horizontal}\\\\
+            P_v&=$(round(pv,digits=2)) KN/m &\\Rightarrow \\textit{Componente vertical}\\\\
+            M_u&=$(round(Mu,digits=2)) KN.m/m &\\Rightarrow \\textit{Momento último}\\\\
+            r&=$(round(rp,digits=3)) m &\\Rightarrow \\textit{Recubrimiento}\\\\
+            \\phi_r&=$(rfp_n) &\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
+            d&=$(round(d,digits=2)) m &\\Rightarrow \\textit{Peralte efectivo}\\\\
+            a&=$(round(a,digits=4)) m &\\Rightarrow \\textit{Profundidad de la zona en compresión}\\\\
+            A_s&=$(round(As,digits=6)) m^2 &\\Rightarrow \\textit{área de refuerzo}\\\\
+            &$(rfp_n)@$(trunc(rfp_a*100/As)/100) m&\\Rightarrow \\textit{distribución final}\\\\
+            \\end{align*}
+            ";
+            #LONGITUD DE DESARROLLO__________________________________________________
+            #se buscará el punto donde el momento sea exactamente igual a la mitad del
+            #momento último
+            Mus2=Mu/2;
+            hm=hp/2#altura inicial desde donde se iniciará la iteración
             Pam=0.5*Ka*gamma*hm^2;#efecto del suelo de relleno
             Paqm=Ka*hm*mywall.q/cosd(mywall.alpha);#efecto de carga distribuida
-        end
-        Patm=Pam+Paqm;#empuje total
-        zm=(Pam*hm/3+Paqm*hm/2)/Patm;#punto de aplicación
-        ph=Patm*cosd(mywall.alpha);
-        pv=Patm*sind(mywall.alpha);
-        Mm=Patm*zm*fcv;
-        dsgn*="\\subsubsection{Longitud de desarrollo}
-        Se buscó por iteración el punto donde el momento sea exactamente la mitad de \$M_u\$\\\\
-        \\begin{align*}
-        M_u/2&=$(round(Mus2,digits=2)) KN.m/m&\\Rightarrow \\textit{}\\\\
-        h_m&=$(round(hm,digits=2)) m&\\Rightarrow \\textit{Medida desde la parte superior de la pantalla}\\\\
-        P_{am}&=$(round(Pam,digits=2)) KN/m &\\Rightarrow \\textit{efecto del suelo de relleno}\\\\
-        P_{aqm}&=$(round(Paqm,digits=2)) KN/m &\\Rightarrow \\textit{efecto de la carga distribuida}\\\\
-        P_{atm}&=$(round(Patm,digits=2)) KN/m &\\Rightarrow \\textit{empuje total}\\\\
-        \\overline{z}&=$(round(zm,digits=2)) m &\\Rightarrow \\textit{punto de aplicación}\\\\
-        P_h&=$(round(ph,digits=2)) KN/m &\\Rightarrow \\textit{Componente horizontal}\\\\
-        P_v&=$(round(pv,digits=2)) KN/m &\\Rightarrow \\textit{Componente vertical}\\\\
-        h_c&=$(round(hp-hm,digits=2)) m &\\Rightarrow \\textit{Medida desde la base de la pantalla}\\\\
-        L_c&=$(round(hp-hm+d,digits=2)) m &\\Rightarrow h_c+d\\\\
-        L_{c_{usar}}&=$(ceil((hp-hm+d)*20)/20) m &\\Rightarrow \\textit{Longitud final}\\\\%elegimos el mayor multiplo de 0.05
-        \\end{align*}
-        "
-        if draw_aditional_path==1
-            #calculamos el acero de refuerzo que le correspondería a Mu/2 para determinar
-            #si es necesario modificar separaciones
-            dm=(t2+t3)*hm/hp+t1-rp-rfp_d/2;
-            #iteración para conseguir el área de refuerzo
-            a=dm/5;#valor inicial de la profundidad de la zona en compresión
-            Asm=long_reinforcement_area(Mu/2,phim,fy,dm,a);
-            while abs(a-compression_zone_depth(Asm,fy,fc,1))>1e-6
-                a=compression_zone_depth(Asm,fy,fc,1);
+
+            while abs(hm-(((Mus2/fcv)-(Paqm*hm/2))/(Pam/(3*hm^2)))^(1/3))>1e-7
+                hm=(((Mus2/fcv)-(Paqm*hm/2))/(Pam/(3*hm^2)))^(1/3);
+                Pam=0.5*Ka*gamma*hm^2;#efecto del suelo de relleno
+                Paqm=Ka*hm*mywall.q/cosd(mywall.alpha);#efecto de carga distribuida
+            end
+            Patm=Pam+Paqm;#empuje total
+            zm=(Pam*hm/3+Paqm*hm/2)/Patm;#punto de aplicación
+            ph=Patm*cosd(mywall.alpha);
+            pv=Patm*sind(mywall.alpha);
+            Mm=Patm*zm*fcv;
+            dsgn*="\\subsubsection{Longitud de desarrollo}
+            Se buscó por iteración el punto donde el momento sea exactamente la mitad de \$M_u\$\\\\
+            \\begin{align*}
+            M_u/2&=$(round(Mus2,digits=2)) KN.m/m&\\Rightarrow \\textit{}\\\\
+            h_m&=$(round(hm,digits=2)) m&\\Rightarrow \\textit{Medida desde la parte superior de la pantalla}\\\\
+            P_{am}&=$(round(Pam,digits=2)) KN/m &\\Rightarrow \\textit{efecto del suelo de relleno}\\\\
+            P_{aqm}&=$(round(Paqm,digits=2)) KN/m &\\Rightarrow \\textit{efecto de la carga distribuida}\\\\
+            P_{atm}&=$(round(Patm,digits=2)) KN/m &\\Rightarrow \\textit{empuje total}\\\\
+            \\overline{z}&=$(round(zm,digits=2)) m &\\Rightarrow \\textit{punto de aplicación}\\\\
+            P_h&=$(round(ph,digits=2)) KN/m &\\Rightarrow \\textit{Componente horizontal}\\\\
+            P_v&=$(round(pv,digits=2)) KN/m &\\Rightarrow \\textit{Componente vertical}\\\\
+            h_c&=$(round(hp-hm,digits=2)) m &\\Rightarrow \\textit{Medida desde la base de la pantalla}\\\\
+            L_c&=$(round(hp-hm+d,digits=2)) m &\\Rightarrow h_c+d\\\\
+            L_{c_{usar}}&=$(ceil((hp-hm+d)*20)/20) m &\\Rightarrow \\textit{Longitud final}\\\\%elegimos el mayor multiplo de 0.05
+            \\end{align*}
+            "
+            if draw_aditional_path==1
+                #calculamos el acero de refuerzo que le correspondería a Mu/2 para determinar
+                #si es necesario modificar separaciones
+                dm=(t2+t3)*hm/hp+t1-rp-rfp_d/2;
+                #iteración para conseguir el área de refuerzo
+                a=dm/5;#valor inicial de la profundidad de la zona en compresión
                 Asm=long_reinforcement_area(Mu/2,phim,fy,dm,a);
+                while abs(a-compression_zone_depth(Asm,fy,fc,1))>1e-6
+                    a=compression_zone_depth(Asm,fy,fc,1);
+                    Asm=long_reinforcement_area(Mu/2,phim,fy,dm,a);
+                end
+                #elección del área de refuerzo
+                Asmmin=0.0018*((t2+t3)*hm/hp+t1);
+                if Asm<Asmmin Asm=Asmmin end
+                Spfm=trunc(rfp_a*100/Asm)/100;
+                if Spfm>=2*Spf else Spf=Spfm/2; end
+            end
+
+            #VERIFICACIÓN POR CORTE_________________________________________________
+            hc=hp-d;#profundidad a la que se verifica por corte
+            Pac=0.5*Ka*gamma*hc^2;#efecto del suelo de relleno
+            Paqc=Ka*hc*mywall.q/cosd(mywall.alpha);#efecto de la carga distribuida
+            Patc=Pac+Paqc;
+            ph=Patc*cosd(mywall.alpha);#componente horizontal
+            pv=Patc*sind(mywall.alpha);#componente vertical
+            Vdu=fcv*ph;
+
+            phic=0.85;#factor de reducción de resistencia (puede ingresarse como palabra clave)
+            if haskey(kwargs,:phic)
+                phic=kwargs[:phic];
+                if typeof(phic)<:Real
+                    if phic<0 error("phic debe ser real positivo") end
+                else
+                    error("phic no es del tipo esperado")
+                end
+            end
+            Vu=Vdu/phic;#corte último
+            Vc=5.25*d*sqrt(fc);#reistencia al corte
+            Vce=Vc*2/3;#resistencia al corte reducida
+            check=Vce>Vu ? "\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
+            dsgn*="\\subsubsection{Verificación por corte}
+            \\begin{align*}
+            h_c&=$(round(hc,digits=2)) m&\\Rightarrow \\textit{profundidad a la que se verifica el corte }h_p-d\\\\
+            P_{ac}&=$(round(Pac,digits=2)) KN/m&\\Rightarrow \\textit{efecto del suelo de relleno}\\\\
+            h_{aqc}&=$(round(Paqc,digits=2)) KN/m&\\Rightarrow \\textit{efecto de la carga distribuida}\\\\
+            P_{atc}&=$(round(Patc,digits=2)) KN/m &\\Rightarrow \\textit{empuje total}\\\\
+            P_h&=$(round(ph,digits=2)) KN/m &\\Rightarrow \\textit{Componente horizontal}\\\\
+            P_v&=$(round(pv,digits=2)) KN/m &\\Rightarrow \\textit{Componente vertical}\\\\
+            V_{du}&=$(round(Vdu,digits=2)) KN/m &\\Rightarrow \\textit{Corte mayorado}\\\\
+            V_{u}&=$(round(Vu,digits=2)) KN/m &\\Rightarrow \\textit{Corte último } V_{du}/\\phi\\\\
+            V_{c}&=$(round(Vc,digits=2)) KN/m &\\Rightarrow \\textit{Resistencia de la sección } 5.25bd\\sqrt{f'c}\\\\
+            V_{ce}&=$(round(Vce,digits=2)) KN/m $check &\\Rightarrow \\textit{Resistencia reducida}\\\\
+            \\end{align*}
+            "
+            #ACERO DE TEMPERATURA___________________________________________________
+            #Arriba
+            Astu=0.002*(t1+(t2+t3)/3);
+            Astm=0.002*(t1+2*(t2+t3)/3);
+            Astd=0.002*(t1+t2+t3);
+            rfpf_n="\\phi1/2''";#diámetro nominal del acero de temperatura frontal
+            rfpf_d=1.27e-2;#diámetro del refuerzo
+            rfpf_a=1.29e-4;#área del refuerzo
+            rfpp_n="\\phi3/8''";#diámetro nominal del acero de temperatura posterior
+            rfpp_d=0.953e-2;#diámetro del refuerzo
+            rfpp_a=0.71e-4;#área del refuerzo
+            if haskey(kwargs,:rlist)
+                rfp=kwargs[:rlist];
+                if typeof(rfp)==Array{Any,2}
+                    rfpf_n=rfp[3,1];
+                    rfpf_d=rfp[3,2];
+                    rfpf_a=rfp[3,3];
+                    rfpp_n=rfp[4,1];
+                    rfpp_d=rfp[4,2];
+                    rfpp_a=rfp[4,3];
+                    if typeof(rfpf_n)==String && typeof(rfpf_d)<:Real && typeof(rfpf_a)<:Real
+                        if rfpf_d<0 || rfpf_a<0 error("diámetro y área de refuerzo deben ser positivos") end
+                    else
+                        error("uno o mas componentes de rlist no son del tipo esperado")
+                    end
+
+                    if typeof(rfpp_n)==String && typeof(rfpp_d)<:Real && typeof(rfpp_a)<:Real
+                        if rfpp_d<0 || rfpp_a<0 error("diámetro y área de refuerzo deben ser positivos") end
+                    else
+                        error("uno o mas componentes de rlist no son del tipo esperado")
+                    end
+                else
+                    error("rlist no es del tipo esperado")
+                end
+            end
+            dsgn*="\\subsubsection{Acero horizontal-temperatura}
+            \\begin{table}[H]
+            \\parbox{.3\\linewidth}{
+            \\centering
+            \\begin{tabular}{llc}
+            \\textbf{Arriba}&&\\\\
+            \$A_{st}\$&$(round(Astu,digits=6)) m\$^2\$&\\\\
+            \$2/3A_{st}\$&$(round(Astu*2/3,digits=6)) m\$^2\$&\\\\
+            \$\\phi_r\$&\$$rfpf_n\$&\\\\
+            S&$(trunc(rfpf_a/(Astu*2/3)*100)/100) m&\\\\
+            &&\\\\
+            \$1/3A_{st}\$&$(round(Astu*1/3,digits=6)) m\$^2\$&\\\\
+            \$\\phi_r\$&\$$rfpp_n\$&\\\\
+            S&$(trunc(rfpp_a/(Astu*1/3)*100)/100) m&\\\\
+            \\end{tabular}
+            }
+            \\hfill
+            \\parbox{.3\\linewidth}{
+            \\centering
+            \\begin{tabular}{llc}
+            \\textbf{Intermedio}&&\\\\
+            \$A_{st}\$&$(round(Astm,digits=6)) m\$^2\$&\\\\
+            \$2/3A_{st}\$&$(round(Astm*2/3,digits=6)) m\$^2\$&\\\\
+            \$\\phi_r\$&\$$rfpf_n\$&\\\\
+            S&$(trunc(rfpf_a/(Astm*2/3)*100)/100) m&\\\\
+            &&\\\\
+            \$1/3A_{st}\$&$(round(Astm*1/3,digits=6)) m\$^2\$&\\\\
+            \$\\phi_r\$&\$$rfpp_n\$&\\\\
+            S&$(trunc(rfpp_a/(Astm*1/3)*100)/100) m&\\\\
+            \\end{tabular}
+            }
+            \\hfill
+            \\parbox{.3\\linewidth}{
+            \\centering
+            \\begin{tabular}{llc}
+            \\textbf{Abajo}&&\\\\
+            \$A_{st}\$&$(round(Astd,digits=6)) m\$^2\$&\\\\
+            \$2/3A_{st}\$&$(round(Astd*2/3,digits=6)) m\$^2\$&\\\\
+            \$\\phi_r\$&\$$rfpf_n\$&\\\\
+            S&$(trunc(rfpf_a/(Astd*2/3)*100)/100) m&\\\\
+            &&\\\\
+            \$1/3A_{st}\$&$(round(Astd*1/3,digits=6)) m\$^2\$&\\\\
+            \$\\phi_r\$&\$$rfpp_n\$&\\\\
+            S&$(trunc(rfpp_a/(Astd*1/3)*100)/100) m&\\\\
+            \\end{tabular}
+            }
+            \\end{table}
+            "
+            #DISEÑO DE LA ZAPATA___________________________________________________
+            Ws=gamma*hp;#presión del terreno sobre la zapata
+            gammac=24;#peso específico del Concreto
+            if haskey(kwargs,:fcid)
+                fcid=kwargs[:fcid];
+                if typeof(fcid)==Int64
+                    if fcid<0 error("fcid debe ser entero positivo") end
+                    gammac=grav.matprop[fcid,3];
+                else
+                    error("fcid no es del tipo esperado")
+                end
+            end
+            Wpp=gammac*hz;#presión por peso propio
+            #Zapata frontal.........................................................
+            Wumax=fcv*factors[4]-0.9*Wpp;#factors[4]: presión en el pie de la zapata
+            Muzf=0.5*Wumax*b1^2;
+
+            rz=0.075;#recubrimiento en la zapata
+            if haskey(kwargs,:rz)
+                rz=kwargs[:rz];
+                if typeof(rz)<:Real
+                    if rz<0 error("rz debe ser real positivo") end
+                else
+                    error("rz no es del tipo esperado")
+                end
+            end
+
+            rfpz_n="\\phi5/8''";#diámetro nominal del refuerzo en la zapata
+            rfpz_d=1.588e-2;#diámetro del refuerzo
+            rfpz_a=2e-4;#área del refuerzo
+            if haskey(kwargs,:rlist)
+                rfp=kwargs[:rlist];
+                if typeof(rfp)==Array{Any,2}
+                    rfpz_n=rfp[2,1];
+                    rfpz_d=rfp[2,2];
+                    rfpz_a=rfp[2,3];
+                    if typeof(rfpz_n)==String && typeof(rfpz_d)<:Real && typeof(rfpz_a)<:Real
+                        if rfpz_d<0 || rfpz_a<0 error("diámetro y área de refuerzo deben ser positivos") end
+                    else
+                        error("uno o mas componentes de rlist no son del tipo esperado")
+                    end
+                else
+                    error("rlist no es del tipo esperado")
+                end
+            end
+
+            dz=hz-rz-rfpz_d/2;
+            #iteración para conseguir el área de refuerzo
+            az=dz/5;#valor inicial de la profundidad de la zona en compresión
+            Aszf=long_reinforcement_area(Muzf,phim,fy,dz,az);
+            while abs(az-compression_zone_depth(Aszf,fy,fc,1))>1e-6
+                az=compression_zone_depth(Aszf,fy,fc,1);
+                Aszf=long_reinforcement_area(Muzf,phim,fy,dz,az);
+            end
+
+            #elección del área de refuerzo
+            Aszfmin=0.0018*hz;
+            if Aszf<Aszfmin Aszf=Aszfmin end
+
+            dsgn*="\\subsection{Zapata}
+            \\begin{tikzpicture}[scale=2]%dibujo ilustrativo
+            \\draw (0,0)--++(-90:1)--++(180:0.9)--++(-90:0.5)--++(0:3.7)--++(90:0.5)
+            --++(180:2.3)--(0.4,0);
+            \\draw (-0.1,0)--(0.1,0)--++(90:0.2)--(0.3,-0.2)--(0.3,0)--(0.5,0);
+            \\draw (-0.9,-1.7)--(2.8,-1.7)--(2.8,-2)--(-0.9,-2.5)--cycle;
+            \\draw [dashed] (2.8,-2)--(-0.9,-2);
+            \\foreach \\x in {0,0.1,0.2,...,1}
+            {
+            \\draw [->](0.5+\\x*2.3,-0.7)--(0.5+\\x*2.3,-1);
+            }
+            \\foreach \\x in {0,0.1,0.2,...,1}
+            {
+            \\draw [->](0.5+\\x*2.3,-1.15)--(0.5+\\x*2.3,-1.35);
+            }
+            \\draw (2,-0.7) node[above]{\$W_s\$};
+            \\draw (0.5,-1.25) node[left]{\$W_{pp}\$};
+            \\draw (2.8,-2) node[right]{\$q_{\\text{talón}}\$};
+            \\draw (-0.9,-2.5) node[left]{\$q_{\\text{pie}}\$};
+            \\draw [->](0.5,-2.3108)--(0.5,-2);
+            \\draw [->](1,-2.2432)--(1,-2);
+            \\draw (0.5,-2.15) node[left]{\$q_b\$};
+            \\draw (1,-2.12) node[left]{\$q_d\$};
+            \\Cote[0.1cm] {(0.5,-1.7)}{(1,-1.7)}{\\tiny{\$d\$}}[
+                Cote node/.append style={below}];
+            \\end{tikzpicture}
+            \\begin{align*}
+            W_s&=$(round(Ws,digits=2)) KN/m/m&\\Rightarrow \\textit{Presión del terreno sobre la zapata}\\\\
+            W_{pp}&=$(round(Wpp,digits=2)) KN/m/m&\\Rightarrow \\textit{presión por peso propio}\\\\
+            \\end{align*}
+            \\subsubsection{Zapata frontal}
+            \\begin{align*}
+            W_{\\text{umáx}}&=$(round(Wumax,digits=2)) KN/m/m&\\Rightarrow \\textit{Presión última}\\\\
+            M_{u}&=$(round(Muzf,digits=2)) KN.m/m&\\Rightarrow \\textit{Momento último}\\\\
+            \\phi_r&=$rfpz_n &\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
+            r&=$(round(rz,digits=3)) m &\\Rightarrow \\textit{Recubrimiento}\\\\
+            d&=$(round(dz,digits=2)) m &\\Rightarrow \\textit{Peralte efectivo}\\\\
+            a&=$(round(az,digits=4)) m &\\Rightarrow \\textit{Profundidad de la zona en compresión}\\\\
+            A_s&=$(round(Aszf,digits=6)) m^2 &\\Rightarrow \\textit{Área de refuerzo}\\\\
+            &$(rfpz_n)@$(trunc(rfpz_a*100/Aszf)/100) m&\\Rightarrow \\textit{distribución final}\\\\
+            \\end{align*}
+            "
+            #Zapata posterior.......................................................
+            fcm=1.4;#factor de carga muerta
+            if haskey(kwargs,:fcm)#si se ingreso un factor de carga muerta diferente
+                fcm=kwargs[:fcm];
+                if typeof(fcm)<:Real
+                    if fcm<0 error("fcm debe ser real positivo") end
+                else
+                    error("fcm no es del tipo esperado")
+                end
+            end
+            qb=fcm*(factors[4]-factors[5])*b2/(b1+t2+t1+t3+b2);
+            Wur=fcm*(Ws+Wpp-factors[5]);
+            Muzp=Wur*b2^2/2-qb*b2^2/6;#momento último
+            az=dz/5;#valor inicial de la profundidad de la zona en compresión
+            Aszp=long_reinforcement_area(Muzp,phim,fy,dz,az);
+            while abs(az-compression_zone_depth(Aszp,fy,fc,1))>1e-6
+                az=compression_zone_depth(Aszp,fy,fc,1);
+                Aszp=long_reinforcement_area(Muzp,phim,fy,dz,az);
             end
             #elección del área de refuerzo
-            Asmmin=0.0018*((t2+t3)*hm/hp+t1);
-            if Asm<Asmmin Asm=Asmmin end
-            Spfm=trunc(rfp_a*100/Asm)/100;
-            if Spfm>=2*Spf else Spf=Spfm/2; end
-        end
+            Aszpmin=0.0018*hz;
+            if Aszp<Aszpmin Aszp=Aszpmin end
 
-        #VERIFICACIÓN POR CORTE_________________________________________________
-        hc=hp-d;#profundidad a la que se verifica por corte
-        Pac=0.5*Ka*gamma*hc^2;#efecto del suelo de relleno
-        Paqc=Ka*hc*mywall.q/cosd(mywall.alpha);#efecto de la carga distribuida
-        Patc=Pac+Paqc;
-        ph=Patc*cosd(mywall.alpha);#componente horizontal
-        pv=Patc*sind(mywall.alpha);#componente vertical
-        Vdu=fcv*ph;
+            dsgn*="\\subsubsection{Zapata posterior}
+            \\begin{align*}
+            q_b&=$(round(qb,digits=2)) KN/m/m&\\Rightarrow \\textit{Ver figura de arriba}\\\\
+            W_{ur}&=$(round(Wur,digits=2)) KN/m/m&\\Rightarrow W_{ur}=fcm(W_s+W_{pp}-q_{\\text{talón}})\\\\
+            M_{u}&=$(round(Muzp,digits=2)) KN.m/m&\\Rightarrow \\textit{Momento último}\\\\
+            \\phi_r&=$rfpz_n &\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
+            r&=$(round(rz,digits=3)) m &\\Rightarrow \\textit{Recubrimiento}\\\\
+            d&=$(round(dz,digits=2)) m &\\Rightarrow \\textit{Peralte efectivo}\\\\
+            a&=$(round(az,digits=4)) m &\\Rightarrow \\textit{Profundidad de la zona en compresión}\\\\
+            A_s&=$(round(Aszp,digits=6)) m^2 &\\Rightarrow \\textit{Área de refuerzo}\\\\
+            &$(rfpz_n)@$(trunc(rfpz_a*100/Aszp)/100) m&\\Rightarrow \\textit{distribución final}\\\\
+            \\end{align*}
+            "
+            #Verificación a cortante
+            qd=fcm*(factors[4]-factors[5])*(b2-dz)/(b1+t2+t1+t3+b2);
+            Vdu=fcm*(Ws+Wpp-factors[5])*(b2-dz)-0.5*qd*(b2-dz);
+            Vn=Vdu/phic;
+            Vc=5.25*dz*sqrt(fc);#reistencia al corte
+            check=Vc>Vn ? "\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
 
-        phic=0.85;#factor de reducción de resistencia (puede ingresarse como palabra clave)
-        if haskey(kwargs,:phic)
-            phic=kwargs[:phic];
-            if typeof(phic)<:Real
-                if phic<0 error("phic debe ser real positivo") end
-            else
-                error("phic no es del tipo esperado")
-            end
-        end
-        Vu=Vdu/phic;#corte último
-        Vc=5.25*d*sqrt(fc);#reistencia al corte
-        Vce=Vc*2/3;#resistencia al corte reducida
-        check=Vce>Vu ? "\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
-        dsgn*="\\subsubsection{Verificación por corte}
-        \\begin{align*}
-        h_c&=$(round(hc,digits=2)) m&\\Rightarrow \\textit{profundidad a la que se verifica el corte }h_p-d\\\\
-        P_{ac}&=$(round(Pac,digits=2)) KN/m&\\Rightarrow \\textit{efecto del suelo de relleno}\\\\
-        h_{aqc}&=$(round(Paqc,digits=2)) KN/m&\\Rightarrow \\textit{efecto de la carga distribuida}\\\\
-        P_{atc}&=$(round(Patc,digits=2)) KN/m &\\Rightarrow \\textit{empuje total}\\\\
-        P_h&=$(round(ph,digits=2)) KN/m &\\Rightarrow \\textit{Componente horizontal}\\\\
-        P_v&=$(round(pv,digits=2)) KN/m &\\Rightarrow \\textit{Componente vertical}\\\\
-        V_{du}&=$(round(Vdu,digits=2)) KN/m &\\Rightarrow \\textit{Corte mayorado}\\\\
-        V_{u}&=$(round(Vu,digits=2)) KN/m &\\Rightarrow \\textit{Corte último } V_{du}/\\phi\\\\
-        V_{c}&=$(round(Vc,digits=2)) KN/m &\\Rightarrow \\textit{Resistencia de la sección } 5.25bd\\sqrt{f'c}\\\\
-        V_{ce}&=$(round(Vce,digits=2)) KN/m $check &\\Rightarrow \\textit{Resistencia reducida}\\\\
-        \\end{align*}
-        "
-        #ACERO DE TEMPERATURA___________________________________________________
-        #Arriba
-        Astu=0.002*(t1+(t2+t3)/3);
-        Astm=0.002*(t1+2*(t2+t3)/3);
-        Astd=0.002*(t1+t2+t3);
-        rfpf_n="\\phi1/2''";#diámetro nominal del acero de temperatura frontal
-        rfpf_d=1.27e-2;#diámetro del refuerzo
-        rfpf_a=1.29e-4;#área del refuerzo
-        rfpp_n="\\phi3/8''";#diámetro nominal del acero de temperatura posterior
-        rfpp_d=0.953e-2;#diámetro del refuerzo
-        rfpp_a=0.71e-4;#área del refuerzo
-        if haskey(kwargs,:rlist)
-            rfp=kwargs[:rlist];
-            if typeof(rfp)==Array{Any,2}
-                rfpf_n=rfp[3,1];
-                rfpf_d=rfp[3,2];
-                rfpf_a=rfp[3,3];
-                rfpp_n=rfp[4,1];
-                rfpp_d=rfp[4,2];
-                rfpp_a=rfp[4,3];
-                if typeof(rfpf_n)==String && typeof(rfpf_d)<:Real && typeof(rfpf_a)<:Real
-                    if rfpf_d<0 || rfpf_a<0 error("diámetro y área de refuerzo deben ser positivos") end
-                else
-                    error("uno o mas componentes de rlist no son del tipo esperado")
-                end
-
-                if typeof(rfpp_n)==String && typeof(rfpp_d)<:Real && typeof(rfpp_a)<:Real
-                    if rfpp_d<0 || rfpp_a<0 error("diámetro y área de refuerzo deben ser positivos") end
-                else
-                    error("uno o mas componentes de rlist no son del tipo esperado")
-                end
-            else
-                error("rlist no es del tipo esperado")
-            end
-        end
-        dsgn*="\\subsubsection{Acero horizontal-temperatura}
-        \\begin{table}[H]
-        \\parbox{.3\\linewidth}{
-        \\centering
-        \\begin{tabular}{llc}
-        \\textbf{Arriba}&&\\\\
-        \$A_{st}\$&$(round(Astu,digits=6)) m\$^2\$&\\\\
-        \$2/3A_{st}\$&$(round(Astu*2/3,digits=6)) m\$^2\$&\\\\
-        \$\\phi_r\$&\$$rfpf_n\$&\\\\
-        S&$(trunc(rfpf_a/(Astu*2/3)*100)/100) m&\\\\
-        &&\\\\
-        \$1/3A_{st}\$&$(round(Astu*1/3,digits=6)) m\$^2\$&\\\\
-        \$\\phi_r\$&\$$rfpp_n\$&\\\\
-        S&$(trunc(rfpp_a/(Astu*1/3)*100)/100) m&\\\\
-        \\end{tabular}
-        }
-        \\hfill
-        \\parbox{.3\\linewidth}{
-        \\centering
-        \\begin{tabular}{llc}
-        \\textbf{Intermedio}&&\\\\
-        \$A_{st}\$&$(round(Astm,digits=6)) m\$^2\$&\\\\
-        \$2/3A_{st}\$&$(round(Astm*2/3,digits=6)) m\$^2\$&\\\\
-        \$\\phi_r\$&\$$rfpf_n\$&\\\\
-        S&$(trunc(rfpf_a/(Astm*2/3)*100)/100) m&\\\\
-        &&\\\\
-        \$1/3A_{st}\$&$(round(Astm*1/3,digits=6)) m\$^2\$&\\\\
-        \$\\phi_r\$&\$$rfpp_n\$&\\\\
-        S&$(trunc(rfpp_a/(Astm*1/3)*100)/100) m&\\\\
-        \\end{tabular}
-        }
-        \\hfill
-        \\parbox{.3\\linewidth}{
-        \\centering
-        \\begin{tabular}{llc}
-        \\textbf{Abajo}&&\\\\
-        \$A_{st}\$&$(round(Astd,digits=6)) m\$^2\$&\\\\
-        \$2/3A_{st}\$&$(round(Astd*2/3,digits=6)) m\$^2\$&\\\\
-        \$\\phi_r\$&\$$rfpf_n\$&\\\\
-        S&$(trunc(rfpf_a/(Astd*2/3)*100)/100) m&\\\\
-        &&\\\\
-        \$1/3A_{st}\$&$(round(Astd*1/3,digits=6)) m\$^2\$&\\\\
-        \$\\phi_r\$&\$$rfpp_n\$&\\\\
-        S&$(trunc(rfpp_a/(Astd*1/3)*100)/100) m&\\\\
-        \\end{tabular}
-        }
-        \\end{table}
-        "
-        #DISEÑO DE LA ZAPATA___________________________________________________
-        Ws=gamma*hp;#presión del terreno sobre la zapata
-        gammac=24;#peso específico del Concreto
-        if haskey(kwargs,:fcid)
-            fcid=kwargs[:fcid];
-            if typeof(fcid)==Int64
-                if fcid<0 error("fcid debe ser entero positivo") end
-                gammac=grav.matprop[fcid,3];
-            else
-                error("fcid no es del tipo esperado")
-            end
-        end
-        Wpp=gammac*hz;#presión por peso propio
-        #Zapata frontal.........................................................
-        Wumax=fcv*factors[4]-0.9*Wpp;#factors[4]: presión en el pie de la zapata
-        Muzf=0.5*Wumax*b1^2;
-
-        rz=0.075;#recubrimiento en la zapata
-        if haskey(kwargs,:rz)
-            rz=kwargs[:rz];
-            if typeof(rz)<:Real
-                if rz<0 error("rz debe ser real positivo") end
-            else
-                error("rz no es del tipo esperado")
-            end
-        end
-
-        rfpz_n="\\phi5/8''";#diámetro nominal del refuerzo en la zapata
-        rfpz_d=1.588e-2;#diámetro del refuerzo
-        rfpz_a=2e-4;#área del refuerzo
-        if haskey(kwargs,:rlist)
-            rfp=kwargs[:rlist];
-            if typeof(rfp)==Array{Any,2}
-                rfpz_n=rfp[2,1];
-                rfpz_d=rfp[2,2];
-                rfpz_a=rfp[2,3];
-                if typeof(rfpz_n)==String && typeof(rfpz_d)<:Real && typeof(rfpz_a)<:Real
-                    if rfpz_d<0 || rfpz_a<0 error("diámetro y área de refuerzo deben ser positivos") end
-                else
-                    error("uno o mas componentes de rlist no son del tipo esperado")
-                end
-            else
-                error("rlist no es del tipo esperado")
-            end
-        end
-
-        dz=hz-rz-rfpz_d/2;
-        #iteración para conseguir el área de refuerzo
-        az=dz/5;#valor inicial de la profundidad de la zona en compresión
-        Aszf=long_reinforcement_area(Muzf,phim,fy,dz,az);
-        while abs(az-compression_zone_depth(Aszf,fy,fc,1))>1e-6
-            az=compression_zone_depth(Aszf,fy,fc,1);
-            Aszf=long_reinforcement_area(Muzf,phim,fy,dz,az);
-        end
-
-        #elección del área de refuerzo
-        Aszfmin=0.0018*hz;
-        if Aszf<Aszfmin Aszf=Aszfmin end
-
-        dsgn*="\\subsection{Zapata}
-        \\begin{tikzpicture}[scale=2]%dibujo ilustrativo
-        \\draw (0,0)--++(-90:1)--++(180:0.9)--++(-90:0.5)--++(0:3.7)--++(90:0.5)
-        --++(180:2.3)--(0.4,0);
-        \\draw (-0.1,0)--(0.1,0)--++(90:0.2)--(0.3,-0.2)--(0.3,0)--(0.5,0);
-        \\draw (-0.9,-1.7)--(2.8,-1.7)--(2.8,-2)--(-0.9,-2.5)--cycle;
-        \\draw [dashed] (2.8,-2)--(-0.9,-2);
-        \\foreach \\x in {0,0.1,0.2,...,1}
-        {
-        \\draw [->](0.5+\\x*2.3,-0.7)--(0.5+\\x*2.3,-1);
-        }
-        \\foreach \\x in {0,0.1,0.2,...,1}
-        {
-        \\draw [->](0.5+\\x*2.3,-1.15)--(0.5+\\x*2.3,-1.35);
-        }
-        \\draw (2,-0.7) node[above]{\$W_s\$};
-        \\draw (0.5,-1.25) node[left]{\$W_{pp}\$};
-        \\draw (2.8,-2) node[right]{\$q_{\\text{talón}}\$};
-        \\draw (-0.9,-2.5) node[left]{\$q_{\\text{pie}}\$};
-        \\draw [->](0.5,-2.3108)--(0.5,-2);
-        \\draw [->](1,-2.2432)--(1,-2);
-        \\draw (0.5,-2.15) node[left]{\$q_b\$};
-        \\draw (1,-2.12) node[left]{\$q_d\$};
-        \\Cote[0.1cm] {(0.5,-1.7)}{(1,-1.7)}{\\tiny{\$d\$}}[
-            Cote node/.append style={below}];
-        \\end{tikzpicture}
-        \\begin{align*}
-        W_s&=$(round(Ws,digits=2)) KN/m/m&\\Rightarrow \\textit{Presión del terreno sobre la zapata}\\\\
-        W_{pp}&=$(round(Wpp,digits=2)) KN/m/m&\\Rightarrow \\textit{presión por peso propio}\\\\
-        \\end{align*}
-        \\subsubsection{Zapata frontal}
-        \\begin{align*}
-        W_{\\text{umáx}}&=$(round(Wumax,digits=2)) KN/m/m&\\Rightarrow \\textit{Presión última}\\\\
-        M_{u}&=$(round(Muzf,digits=2)) KN.m/m&\\Rightarrow \\textit{Momento último}\\\\
-        \\phi_r&=$rfpz_n &\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
-        r&=$(round(rz,digits=3)) m &\\Rightarrow \\textit{Recubrimiento}\\\\
-        d&=$(round(dz,digits=2)) m &\\Rightarrow \\textit{Peralte efectivo}\\\\
-        a&=$(round(az,digits=4)) m &\\Rightarrow \\textit{Profundidad de la zona en compresión}\\\\
-        A_s&=$(round(Aszf,digits=6)) m^2 &\\Rightarrow \\textit{Área de refuerzo}\\\\
-        &$(rfpz_n)@$(trunc(rfpz_a*100/Aszf)/100) m&\\Rightarrow \\textit{distribución final}\\\\
-        \\end{align*}
-        "
-        #Zapata posterior.......................................................
-        fcm=1.4;#factor de carga muerta
-        if haskey(kwargs,:fcm)#si se ingreso un factor de carga muerta diferente
-            fcm=kwargs[:fcm];
-            if typeof(fcm)<:Real
-                if fcm<0 error("fcm debe ser real positivo") end
-            else
-                error("fcm no es del tipo esperado")
-            end
-        end
-        qb=fcm*(factors[4]-factors[5])*b2/(b1+t2+t1+t3+b2);
-        Wur=fcm*(Ws+Wpp-factors[5]);
-        Muzp=Wur*b2^2/2-qb*b2^2/6;#momento último
-        az=dz/5;#valor inicial de la profundidad de la zona en compresión
-        Aszp=long_reinforcement_area(Muzp,phim,fy,dz,az);
-        while abs(az-compression_zone_depth(Aszp,fy,fc,1))>1e-6
-            az=compression_zone_depth(Aszp,fy,fc,1);
-            Aszp=long_reinforcement_area(Muzp,phim,fy,dz,az);
-        end
-        #elección del área de refuerzo
-        Aszpmin=0.0018*hz;
-        if Aszp<Aszpmin Aszp=Aszpmin end
-
-        dsgn*="\\subsubsection{Zapata posterior}
-        \\begin{align*}
-        q_b&=$(round(qb,digits=2)) KN/m/m&\\Rightarrow \\textit{Ver figura de arriba}\\\\
-        W_{ur}&=$(round(Wur,digits=2)) KN/m/m&\\Rightarrow W_{ur}=fcm(W_s+W_{pp}-q_{\\text{talón}})\\\\
-        M_{u}&=$(round(Muzp,digits=2)) KN.m/m&\\Rightarrow \\textit{Momento último}\\\\
-        \\phi_r&=$rfpz_n &\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
-        r&=$(round(rz,digits=3)) m &\\Rightarrow \\textit{Recubrimiento}\\\\
-        d&=$(round(dz,digits=2)) m &\\Rightarrow \\textit{Peralte efectivo}\\\\
-        a&=$(round(az,digits=4)) m &\\Rightarrow \\textit{Profundidad de la zona en compresión}\\\\
-        A_s&=$(round(Aszp,digits=6)) m^2 &\\Rightarrow \\textit{Área de refuerzo}\\\\
-        &$(rfpz_n)@$(trunc(rfpz_a*100/Aszp)/100) m&\\Rightarrow \\textit{distribución final}\\\\
-        \\end{align*}
-        "
-        #Verificación a cortante
-        qd=fcm*(factors[4]-factors[5])*(b2-dz)/(b1+t2+t1+t3+b2);
-        Vdu=fcm*(Ws+Wpp-factors[5])*(b2-dz)-0.5*qd*(b2-dz);
-        Vn=Vdu/phic;
-        Vc=5.25*dz*sqrt(fc);#reistencia al corte
-        check=Vc>Vn ? "\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
-
-        dsgn*="\\subsubsection{Verificación por corte}
-        \\begin{align*}
-        q_d&=$(round(qd,digits=2)) m&\\Rightarrow \\textit{Ver figura de arriba}\\\\
-        V_{du}&=$(round(Vdu,digits=2)) KN/m &\\Rightarrow \\textit{Corte mayorado}\\\\
-        V_{u}&=$(round(Vn,digits=2)) KN/m &\\Rightarrow \\textit{Corte último } V_{du}/\\phi\\\\
-        V_{c}&=$(round(Vc,digits=2)) KN/m $check&\\Rightarrow \\textit{Resistencia de la sección } 5.25bd\\sqrt{f'c}\\\\
-        \\end{align*}
-        "
-        #Refuerzo transversal-temperatura
-        dsgn*="\\subsubsection{Refuerzo transversal-temperatura}
-        \\begin{align*}
-        A_{s-temp}&=$(round(0.0018*hz,digits=6)) m^2&\\Rightarrow \\textit{Refuerzo transversal}\\\\
-        \\phi_r &=$rfpz_n&\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
-        S &=$(trunc(rfpz_a/(0.0018*hz)*100)/100) m&\\Rightarrow \\textit{Separación}\\\\
-        \\end{align*}
-        "
-        #Dibujo
-        labels="";#Etiquetas de refuerzo
-        #lineas longitudinales
-        #coordenadas de los nodos en la pantalla posterior
-        xpi=b1+t2+t1+t3; ypi=hz;
-        xps=b1+t2+t1; yps=hz+hp;
-        dist=hypot(xps-xpi,yps-ypi);
-        Cs=(xps-xpi)/dist;
-        Sn=(yps-ypi)/dist;
-        #obteniendo coordenadas para el acero de refuerzo principal en la cara
-        #posterior
-        rp_path=VolatileArray(zeros(Float64,0),0,0);
-        rp_path[1,1]=xps-rp/Sn-rp*Cs/Sn-0.15;
-        rp_path[1,2]=yps-rp;
-        rp_path[2,1]=xps-rp/Sn-rp*Cs/Sn;
-        rp_path[2,2]=yps-rp;
-        rp_path[3,1]=xpi-rp/Sn-(hz/Sn-rz/Sn)*Cs;
-        rp_path[3,2]=ypi-hz+rz;
-        rp_path[4,1]=xpi-rp/Sn-(hz/Sn-rz/Sn)*Cs+0.4;
-        rp_path[4,2]=ypi-hz+rz;
-        #obteniendo coordenadas para el acero de refuerzo adicional en la cara posterior
-        #de la pantalla
-        draw_help="";
-        if draw_aditional_path==1
-            rpa_path=VolatileArray(zeros(Float64,0),0,0);
-            rpa_path[1,1]=rp_path[2,1]-.03;
-            rpa_path[1,2]=rp_path[2,2];
-            rpa_path[2,1]=rp_path[3,1]-.03;
-            rpa_path[2,2]=rp_path[3,2];
-            rpa_path[3,1]=rp_path[4,1]-.03;
-            rpa_path[3,2]=rp_path[4,2];
-            dist=hypot(rpa_path[1,1]-rpa_path[2,1],rpa_path[1,2]-rpa_path[2,2]);
-            Cs=(rpa_path[1,1]-rpa_path[2,1])/dist;
-            Sn=(rpa_path[1,2]-rpa_path[2,2])/dist;
-            rpa_path[1,1]=rpa_path[2,1]+(hz-rz+ceil((hp-hm+d)*20)/20)*Cs/Sn;
-            rpa_path[1,2]=rpa_path[2,2]+hz-rz+ceil((hp-hm+d)*20)/20;
-            dap=draw_polyline_lcode(Array(rpa_path),1,2,3,ops="line width=0.2mm");
-            #temperatura pantalla posterior
-            rptd_path=VolatileArray(zeros(Float64,0),0,0);#parte inferior
-            S=trunc(rfpp_a/(Astd*1/3)*100)/100
-            rptd_path[1,1]=rp_path[3,1]+(hz-rz)*Cs/Sn-rfpp_d/(2*Sn);
-            rptd_path[1,2]=rp_path[3,2]+hz-rz
-            rptd_path[2,1]=rptd_path[1,1]+hp*Cs/(3*Sn);
-            rptd_path[2,2]=rptd_path[1,2]+hp/3;
-            rptm_path=VolatileArray(zeros(Float64,0),0,0);#parte media
-            rptm_path[1,1]=rptd_path[1,1]+ceil((hp/(3*Sn))/S)*S*Cs;
-            rptm_path[1,2]=rptd_path[1,2]+ceil((hp/(3*Sn))/S)*S*Sn;
-            rptm_path[2,1]=rptd_path[1,1]+hp*Cs*2/(3*Sn);
-            rptm_path[2,2]=rptd_path[1,2]+hp*2/3;
-            S=trunc(rfpp_a/(Astm*1/3)*100)/100
-
-            #etiqueta de acero longitudinal-----------------------------------
-            dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
-            dist=trunc(trunc(dist/S)/2)*S+S/2;
-            labelx=rptm_path[1,1]+dist*Cs+rfpp_d/(2*Sn);
-            labely=rptm_path[1,2]+dist*Sn;
-            labeln="\$$rfp_n @ $(Spf*2)\$";
-            labels*=draw_leader_lcode((labelx,labely),label=labeln);
-
-            rptu_path=VolatileArray(zeros(Float64,0),0,0);#parte superior
-            dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
-            rptu_path[1,1]=rptm_path[1,1]+ceil(dist/S)*S*Cs;
-            rptu_path[1,2]=rptm_path[1,2]+ceil(dist/S)*S*Sn;
-            rptu_path[2,1]=rp_path[2,1]-rfpp_d/(2*Sn);
-            rptu_path[2,2]=rp_path[2,2];
-            #corrigiendo la ubicación del acero transversal en el dibujo en
-            #uno de los tramos por refuerzo adicional
-            Lc=ceil((hp-hm+d)*20)/20;
-            L1=rptd_path[2,2];L2=rptm_path[1,2];L3=rptm_path[2,2];L4=rptu_path[1,2];L5=rptu_path[2,2];#límietes clave
-            if L1>hz+Lc
+            dsgn*="\\subsubsection{Verificación por corte}
+            \\begin{align*}
+            q_d&=$(round(qd,digits=2)) m&\\Rightarrow \\textit{Ver figura de arriba}\\\\
+            V_{du}&=$(round(Vdu,digits=2)) KN/m &\\Rightarrow \\textit{Corte mayorado}\\\\
+            V_{u}&=$(round(Vn,digits=2)) KN/m &\\Rightarrow \\textit{Corte último } V_{du}/\\phi\\\\
+            V_{c}&=$(round(Vc,digits=2)) KN/m $check&\\Rightarrow \\textit{Resistencia de la sección } 5.25bd\\sqrt{f'c}\\\\
+            \\end{align*}
+            "
+            #Refuerzo transversal-temperatura
+            dsgn*="\\subsubsection{Refuerzo transversal-temperatura}
+            \\begin{align*}
+            A_{s-temp}&=$(round(0.0018*hz,digits=6)) m^2&\\Rightarrow \\textit{Refuerzo transversal}\\\\
+            \\phi_r &=$rfpz_n&\\Rightarrow \\textit{Diámetro de refuerzo}\\\\
+            S &=$(trunc(rfpz_a/(0.0018*hz)*100)/100) m&\\Rightarrow \\textit{Separación}\\\\
+            \\end{align*}
+            "
+            #Dibujo
+            labels="";#Etiquetas de refuerzo
+            #lineas longitudinales
+            #coordenadas de los nodos en la pantalla posterior
+            xpi=b1+t2+t1+t3; ypi=hz;
+            xps=b1+t2+t1; yps=hz+hp;
+            dist=hypot(xps-xpi,yps-ypi);
+            Cs=(xps-xpi)/dist;
+            Sn=(yps-ypi)/dist;
+            #obteniendo coordenadas para el acero de refuerzo principal en la cara
+            #posterior
+            rp_path=VolatileArray(zeros(Float64,0),0,0);
+            rp_path[1,1]=xps-rp/Sn-rp*Cs/Sn-0.15;
+            rp_path[1,2]=yps-rp;
+            rp_path[2,1]=xps-rp/Sn-rp*Cs/Sn;
+            rp_path[2,2]=yps-rp;
+            rp_path[3,1]=xpi-rp/Sn-(hz/Sn-rz/Sn)*Cs;
+            rp_path[3,2]=ypi-hz+rz;
+            rp_path[4,1]=xpi-rp/Sn-(hz/Sn-rz/Sn)*Cs+0.4;
+            rp_path[4,2]=ypi-hz+rz;
+            #obteniendo coordenadas para el acero de refuerzo adicional en la cara posterior
+            #de la pantalla
+            draw_help="";
+            if draw_aditional_path==1
+                rpa_path=VolatileArray(zeros(Float64,0),0,0);
+                rpa_path[1,1]=rp_path[2,1]-.03;
+                rpa_path[1,2]=rp_path[2,2];
+                rpa_path[2,1]=rp_path[3,1]-.03;
+                rpa_path[2,2]=rp_path[3,2];
+                rpa_path[3,1]=rp_path[4,1]-.03;
+                rpa_path[3,2]=rp_path[4,2];
+                dist=hypot(rpa_path[1,1]-rpa_path[2,1],rpa_path[1,2]-rpa_path[2,2]);
+                Cs=(rpa_path[1,1]-rpa_path[2,1])/dist;
+                Sn=(rpa_path[1,2]-rpa_path[2,2])/dist;
+                rpa_path[1,1]=rpa_path[2,1]+(hz-rz+ceil((hp-hm+d)*20)/20)*Cs/Sn;
+                rpa_path[1,2]=rpa_path[2,2]+hz-rz+ceil((hp-hm+d)*20)/20;
+                dap=draw_polyline_lcode(Array(rpa_path),1,2,3,ops="line width=0.2mm");
+                #temperatura pantalla posterior
+                rptd_path=VolatileArray(zeros(Float64,0),0,0);#parte inferior
                 S=trunc(rfpp_a/(Astd*1/3)*100)/100
-                rptd_path[1,1]=rptd_path[1,1]-.03;
-                help_path=VolatileArray(zeros(Float64,0),0,0);#camino de ayuda
-                help_path[2,1]=rptd_path[2,1];
-                help_path[2,2]=rptd_path[2,2];
-                rptd_path[2,1]=rptd_path[1,1]+(hz+Lc)*Cs/Sn;
-                rptd_path[2,2]=rptd_path[1,2]+hz+Lc;
-                dist=hypot(rptd_path[1,1]-rptd_path[2,1],rptd_path[2,1]-rptd_path[2,2]);
-                help_path[1,1]=rptd_path[1,1]+ceil(dist/S)*S*Cs+.03;
-                help_path[1,2]=rptd_path[1,2]+ceil(dist/S)*S*Sn;
-                if help_path[2,2]>=help_path[1,2]
-                    draw_help=draw_along_path_lcode(help_path,rfpp_d/2,S);
-                end
-
-                #etiqueta de acero longitudinal-----------------------------------
-                dist=hypot(rptd_path[1,1]-rptd_path[2,1],rptd_path[1,2]-rptd_path[2,2]);
-                dist=trunc(trunc(dist/S)/2)*S+S/2;
-                labelx=rptd_path[1,1]+dist*Cs+rfpp_d/(2*Sn);
-                labely=rptd_path[1,2]+dist*Sn;
-                labeln="\$$rfp_n @ $(Spf*2)\$";
-                labels*=draw_leader_lcode((labelx,labely),label=labeln);
-
-            elseif L1<=hz+Lc<=L2
-                rptd_path[1,1]=rptd_path[1,1]-.03;
-                rptd_path[2,1]=rptd_path[2,1]-.03;
-                draw_help="";
-                S=trunc(rfpp_a/(Astd*1/3)*100)/100
-                #etiqueta de acero longitudinal-----------------------------------
-                dist=hypot(rptd_path[1,1]-rptd_path[2,1],rptd_path[1,2]-rptd_path[2,2]);
-                dist=trunc(trunc(dist/S)/2)*S+S/2;
-                labelx=rptd_path[1,1]+dist*Cs+rfpp_d/(2*Sn);
-                labely=rptd_path[1,2]+dist*Sn;
-                labeln="\$$rfp_n @ $(Spf*2)\$";
-                labels*=draw_leader_lcode((labelx,labely),label=labeln);
-
-            elseif L2<hz+Lc<L3
-                rptd_path[1,1]=rptd_path[1,1]-.03;
-                rptd_path[2,1]=rptd_path[2,1]-.03;
+                rptd_path[1,1]=rp_path[3,1]+(hz-rz)*Cs/Sn-rfpp_d/(2*Sn);
+                rptd_path[1,2]=rp_path[3,2]+hz-rz
+                rptd_path[2,1]=rptd_path[1,1]+hp*Cs/(3*Sn);
+                rptd_path[2,2]=rptd_path[1,2]+hp/3;
+                rptm_path=VolatileArray(zeros(Float64,0),0,0);#parte media
+                rptm_path[1,1]=rptd_path[1,1]+ceil((hp/(3*Sn))/S)*S*Cs;
+                rptm_path[1,2]=rptd_path[1,2]+ceil((hp/(3*Sn))/S)*S*Sn;
+                rptm_path[2,1]=rptd_path[1,1]+hp*Cs*2/(3*Sn);
+                rptm_path[2,2]=rptd_path[1,2]+hp*2/3;
                 S=trunc(rfpp_a/(Astm*1/3)*100)/100
-                rptm_path[1,1]=rptm_path[1,1]-.03;
-                help_path=VolatileArray(zeros(Float64,0),0,0);#camino de ayuda
-                help_path[2,1]=rptm_path[2,1];
-                help_path[2,2]=rptm_path[2,2];
-                rptm_path[2,1]=rptd_path[1,1]+(hz+Lc)*Cs/Sn;
-                rptm_path[2,2]=rptd_path[1,2]+hz+Lc;
-                dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[2,1]-rptm_path[2,2]);
-                help_path[1,1]=rptm_path[1,1]+ceil(dist/S)*S*Cs+.03;
-                help_path[1,2]=rptm_path[1,2]+ceil(dist/S)*S*Sn;
-                if help_path[2,2]>=help_path[1,2]
-                    draw_help=draw_along_path_lcode(help_path,rfpp_d/2,S);
-                end
 
                 #etiqueta de acero longitudinal-----------------------------------
                 dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
@@ -692,501 +639,914 @@ if haskey(kwargs,:design)
                 labeln="\$$rfp_n @ $(Spf*2)\$";
                 labels*=draw_leader_lcode((labelx,labely),label=labeln);
 
-            elseif L3<=hz+Lc<=L4
-                rptd_path[1,1]=rptd_path[1,1]-.03;
-                rptd_path[2,1]=rptd_path[2,1]-.03;
-                rptm_path[1,1]=rptm_path[1,1]-.03;
-                rptm_path[2,1]=rptm_path[2,1]-.03;
-                draw_help="";
-            elseif L4<hz+Lc<L5
-                rptd_path[1,1]=rptd_path[1,1]-.03;
-                rptd_path[2,1]=rptd_path[2,1]-.03;
-                rptm_path[1,1]=rptm_path[1,1]-.03;
-                rptm_path[2,1]=rptm_path[2,1]-.03;
-                S=trunc(rfpp_a/(Astu*1/3)*100)/100
-                rptu_path[1,1]=rptu_path[1,1]-.03;
-                help_path=VolatileArray(zeros(Float64,0),0,0);#camino de ayuda
-                help_path[2,1]=rptu_path[2,1];
-                help_path[2,2]=rptu_path[2,2];
-                rptu_path[2,1]=rptd_path[1,1]+(hz+Lc)*Cs/Sn;
-                rptu_path[2,2]=rptd_path[1,2]+hz+Lc;
-                dist=hypot(rptu_path[1,1]-rptu_path[2,1],rptu_path[2,1]-rptu_path[2,2]);
-                help_path[1,1]=rptu_path[1,1]+ceil(dist/S)*S*Cs+.03;
-                help_path[1,2]=rptu_path[1,2]+ceil(dist/S)*S*Sn;
-                if help_path[2,2]>=help_path[1,2]
-                    draw_help=draw_along_path_lcode(help_path,rfpp_d/2,S);
+                rptu_path=VolatileArray(zeros(Float64,0),0,0);#parte superior
+                dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
+                rptu_path[1,1]=rptm_path[1,1]+ceil(dist/S)*S*Cs;
+                rptu_path[1,2]=rptm_path[1,2]+ceil(dist/S)*S*Sn;
+                rptu_path[2,1]=rp_path[2,1]-rfpp_d/(2*Sn);
+                rptu_path[2,2]=rp_path[2,2];
+                #corrigiendo la ubicación del acero transversal en el dibujo en
+                #uno de los tramos por refuerzo adicional
+                Lc=ceil((hp-hm+d)*20)/20;
+                L1=rptd_path[2,2];L2=rptm_path[1,2];L3=rptm_path[2,2];L4=rptu_path[1,2];L5=rptu_path[2,2];#límietes clave
+                if L1>hz+Lc
+                    S=trunc(rfpp_a/(Astd*1/3)*100)/100
+                    rptd_path[1,1]=rptd_path[1,1]-.03;
+                    help_path=VolatileArray(zeros(Float64,0),0,0);#camino de ayuda
+                    help_path[2,1]=rptd_path[2,1];
+                    help_path[2,2]=rptd_path[2,2];
+                    rptd_path[2,1]=rptd_path[1,1]+(hz+Lc)*Cs/Sn;
+                    rptd_path[2,2]=rptd_path[1,2]+hz+Lc;
+                    dist=hypot(rptd_path[1,1]-rptd_path[2,1],rptd_path[2,1]-rptd_path[2,2]);
+                    help_path[1,1]=rptd_path[1,1]+ceil(dist/S)*S*Cs+.03;
+                    help_path[1,2]=rptd_path[1,2]+ceil(dist/S)*S*Sn;
+                    if help_path[2,2]>=help_path[1,2]
+                        draw_help=draw_along_path_lcode(help_path,rfpp_d/2,S);
+                    end
+
+                    #etiqueta de acero longitudinal-----------------------------------
+                    dist=hypot(rptd_path[1,1]-rptd_path[2,1],rptd_path[1,2]-rptd_path[2,2]);
+                    dist=trunc(trunc(dist/S)/2)*S+S/2;
+                    labelx=rptd_path[1,1]+dist*Cs+rfpp_d/(2*Sn);
+                    labely=rptd_path[1,2]+dist*Sn;
+                    labeln="\$$rfp_n @ $(Spf*2)\$";
+                    labels*=draw_leader_lcode((labelx,labely),label=labeln);
+
+                elseif L1<=hz+Lc<=L2
+                    rptd_path[1,1]=rptd_path[1,1]-.03;
+                    rptd_path[2,1]=rptd_path[2,1]-.03;
+                    draw_help="";
+                    S=trunc(rfpp_a/(Astd*1/3)*100)/100
+                    #etiqueta de acero longitudinal-----------------------------------
+                    dist=hypot(rptd_path[1,1]-rptd_path[2,1],rptd_path[1,2]-rptd_path[2,2]);
+                    dist=trunc(trunc(dist/S)/2)*S+S/2;
+                    labelx=rptd_path[1,1]+dist*Cs+rfpp_d/(2*Sn);
+                    labely=rptd_path[1,2]+dist*Sn;
+                    labeln="\$$rfp_n @ $(Spf*2)\$";
+                    labels*=draw_leader_lcode((labelx,labely),label=labeln);
+
+                elseif L2<hz+Lc<L3
+                    rptd_path[1,1]=rptd_path[1,1]-.03;
+                    rptd_path[2,1]=rptd_path[2,1]-.03;
+                    S=trunc(rfpp_a/(Astm*1/3)*100)/100
+                    rptm_path[1,1]=rptm_path[1,1]-.03;
+                    help_path=VolatileArray(zeros(Float64,0),0,0);#camino de ayuda
+                    help_path[2,1]=rptm_path[2,1];
+                    help_path[2,2]=rptm_path[2,2];
+                    rptm_path[2,1]=rptd_path[1,1]+(hz+Lc)*Cs/Sn;
+                    rptm_path[2,2]=rptd_path[1,2]+hz+Lc;
+                    dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[2,1]-rptm_path[2,2]);
+                    help_path[1,1]=rptm_path[1,1]+ceil(dist/S)*S*Cs+.03;
+                    help_path[1,2]=rptm_path[1,2]+ceil(dist/S)*S*Sn;
+                    if help_path[2,2]>=help_path[1,2]
+                        draw_help=draw_along_path_lcode(help_path,rfpp_d/2,S);
+                    end
+
+                    #etiqueta de acero longitudinal-----------------------------------
+                    dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
+                    dist=trunc(trunc(dist/S)/2)*S+S/2;
+                    labelx=rptm_path[1,1]+dist*Cs+rfpp_d/(2*Sn);
+                    labely=rptm_path[1,2]+dist*Sn;
+                    labeln="\$$rfp_n @ $(Spf*2)\$";
+                    labels*=draw_leader_lcode((labelx,labely),label=labeln);
+
+                elseif L3<=hz+Lc<=L4
+                    rptd_path[1,1]=rptd_path[1,1]-.03;
+                    rptd_path[2,1]=rptd_path[2,1]-.03;
+                    rptm_path[1,1]=rptm_path[1,1]-.03;
+                    rptm_path[2,1]=rptm_path[2,1]-.03;
+                    draw_help="";
+                elseif L4<hz+Lc<L5
+                    rptd_path[1,1]=rptd_path[1,1]-.03;
+                    rptd_path[2,1]=rptd_path[2,1]-.03;
+                    rptm_path[1,1]=rptm_path[1,1]-.03;
+                    rptm_path[2,1]=rptm_path[2,1]-.03;
+                    S=trunc(rfpp_a/(Astu*1/3)*100)/100
+                    rptu_path[1,1]=rptu_path[1,1]-.03;
+                    help_path=VolatileArray(zeros(Float64,0),0,0);#camino de ayuda
+                    help_path[2,1]=rptu_path[2,1];
+                    help_path[2,2]=rptu_path[2,2];
+                    rptu_path[2,1]=rptd_path[1,1]+(hz+Lc)*Cs/Sn;
+                    rptu_path[2,2]=rptd_path[1,2]+hz+Lc;
+                    dist=hypot(rptu_path[1,1]-rptu_path[2,1],rptu_path[2,1]-rptu_path[2,2]);
+                    help_path[1,1]=rptu_path[1,1]+ceil(dist/S)*S*Cs+.03;
+                    help_path[1,2]=rptu_path[1,2]+ceil(dist/S)*S*Sn;
+                    if help_path[2,2]>=help_path[1,2]
+                        draw_help=draw_along_path_lcode(help_path,rfpp_d/2,S);
+                    end
                 end
-            end
             #Acotando el acero adicional
             labels*="\\Cote[-0.35cm] {($(b1),$hz)}{($(b1),$(hz+Lc))}{\\small{$Lc m}}[
                 Cote node/.append style={}];
-                ";
-        else
-            draw_help="";
-            dap="";
-            #temperatura pantalla posterior
-            rptd_path=VolatileArray(zeros(Float64,0),0,0);#parte inferior
-            S=trunc(rfpp_a/(Astd*1/3)*100)/100
-            rptd_path[1,1]=rp_path[3,1]+(hz-rz)*Cs/Sn-rfpp_d/(2*Sn);
-            rptd_path[1,2]=rp_path[3,2]+hz-rz
-            rptd_path[2,1]=rptd_path[1,1]+hp*Cs/(3*Sn);
-            rptd_path[2,2]=rptd_path[1,2]+hp/3;
-            rptm_path=VolatileArray(zeros(Float64,0),0,0);#parte media
-            rptm_path[1,1]=rptd_path[1,1]+ceil((hp/(3*Sn))/S)*S*Cs;
-            rptm_path[1,2]=rptd_path[1,2]+ceil((hp/(3*Sn))/S)*S*Sn;
-            rptm_path[2,1]=rptd_path[1,1]+hp*Cs*2/(3*Sn);
-            rptm_path[2,2]=rptd_path[1,2]+hp*2/3;
-            S=trunc(rfpp_a/(Astm*1/3)*100)/100
+                    ";
+            else
+                draw_help="";
+                dap="";
+                #temperatura pantalla posterior
+                rptd_path=VolatileArray(zeros(Float64,0),0,0);#parte inferior
+                S=trunc(rfpp_a/(Astd*1/3)*100)/100
+                rptd_path[1,1]=rp_path[3,1]+(hz-rz)*Cs/Sn-rfpp_d/(2*Sn);
+                rptd_path[1,2]=rp_path[3,2]+hz-rz
+                rptd_path[2,1]=rptd_path[1,1]+hp*Cs/(3*Sn);
+                rptd_path[2,2]=rptd_path[1,2]+hp/3;
+                rptm_path=VolatileArray(zeros(Float64,0),0,0);#parte media
+                rptm_path[1,1]=rptd_path[1,1]+ceil((hp/(3*Sn))/S)*S*Cs;
+                rptm_path[1,2]=rptd_path[1,2]+ceil((hp/(3*Sn))/S)*S*Sn;
+                rptm_path[2,1]=rptd_path[1,1]+hp*Cs*2/(3*Sn);
+                rptm_path[2,2]=rptd_path[1,2]+hp*2/3;
+                S=trunc(rfpp_a/(Astm*1/3)*100)/100
+
+                #etiqueta de acero longitudinal-----------------------------------
+                dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
+                dist=trunc(trunc(dist/S)/2)*S+S/2;
+                labelx=rptm_path[1,1]+dist*Cs+rfpp_d/(2*Sn);
+                labely=rptm_path[1,2]+dist*Sn;
+                labeln="\$$rfp_n @ $(Spf)\$";
+                labels*=draw_leader_lcode((labelx,labely),label=labeln);
+
+                rptu_path=VolatileArray(zeros(Float64,0),0,0);#parte superior
+                dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
+                rptu_path[1,1]=rptm_path[1,1]+ceil(dist/S)*S*Cs;
+                rptu_path[1,2]=rptm_path[1,2]+ceil(dist/S)*S*Sn;
+                rptu_path[2,1]=rp_path[2,1]-rfpp_d/(2*Sn);
+                rptu_path[2,2]=rp_path[2,2];
+            end
+
+            #coordenadas de los nodos en la pantalla frontal
+            xpi=b1; ypi=hz;
+            xps=b1+t2; yps=hz+hp;
+            dist=hypot(xps-xpi,yps-ypi);
+            Cs=(xps-xpi)/dist;
+            Sn=(yps-ypi)/dist;
+            #obteniendo coordenadas para el acero de refuerzo principal en la cara
+            #frontal
+            rf_path=VolatileArray(zeros(Float64,0),0,0);
+            rf_path[1,1]=xps+rp/Sn-rp*Cs/Sn+0.15;
+            rf_path[1,2]=yps-rp;
+            rf_path[2,1]=xps+rp/Sn-rp*Cs/Sn;
+            rf_path[2,2]=yps-rp;
+            rf_path[3,1]=xpi+rp/Sn-(hz/Sn-rz/Sn)*Cs;
+            rf_path[3,2]=ypi-hz+rz;
+            rf_path[4,1]=xpi+rp/Sn-(hz/Sn-rz/Sn)*Cs+0.4;
+            rf_path[4,2]=ypi-hz+rz;
+            #temperatura pantalla frontal
+            rftd_path=VolatileArray(zeros(Float64,0),0,0);#parte inferior
+            S=trunc(rfpf_a/(Astd*2/3)*100)/100
+            rftd_path[1,1]=rf_path[3,1]+(hz-rz)*Cs/Sn+rfpf_d/(2*Sn);
+            rftd_path[1,2]=rf_path[3,2]+hz-rz
+            rftd_path[2,1]=rftd_path[1,1]+hp*Cs/(3*Sn);
+            rftd_path[2,2]=rftd_path[1,2]+hp/3;
+            rftm_path=VolatileArray(zeros(Float64,0),0,0);#parte media
+            rftm_path[1,1]=rftd_path[1,1]+ceil((hp/(3*Sn))/S)*S*Cs;
+            rftm_path[1,2]=rftd_path[1,2]+ceil((hp/(3*Sn))/S)*S*Sn;
+            rftm_path[2,1]=rftd_path[1,1]+hp*Cs*2/(3*Sn);
+            rftm_path[2,2]=rftd_path[1,2]+hp*2/3;
 
             #etiqueta de acero longitudinal-----------------------------------
-            dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
+            labeln="\$$rfpf_n @ $S\$";
+            S=trunc(rfpf_a/(Astm*2/3)*100)/100
+            dist=hypot(rftm_path[1,1]-rftm_path[2,1],rftm_path[1,2]-rftm_path[2,2]);
             dist=trunc(trunc(dist/S)/2)*S+S/2;
-            labelx=rptm_path[1,1]+dist*Cs+rfpp_d/(2*Sn);
-            labely=rptm_path[1,2]+dist*Sn;
-            labeln="\$$rfp_n @ $(Spf)\$";
+            labelx=rftm_path[1,1]+dist*Cs-rfpf_d/(2*Sn);
+            labely=rftm_path[1,2]+dist*Sn;
+            labels*=draw_leader_lcode((labelx,labely),label=labeln,pos="above left");
+
+
+            rftu_path=VolatileArray(zeros(Float64,0),0,0);#parte superior
+            dist=hypot(rftm_path[1,1]-rftm_path[2,1],rftm_path[1,2]-rftm_path[2,2]);
+            rftu_path[1,1]=rftm_path[1,1]+ceil(dist/S)*S*Cs;
+            rftu_path[1,2]=rftm_path[1,2]+ceil(dist/S)*S*Sn;
+            rftu_path[2,1]=rf_path[2,1]+rfpf_d/(2*Sn);
+            rftu_path[2,2]=rf_path[2,2];
+
+            #etiquetas de acero de temperatura en la pantalla---------------------
+            #frontal
+            S=trunc(rfpf_a/(Astd*2/3)*100)/100;#abajo
+            labeln="\$A_{st}:$rfpf_n @ $S\$";
+            labels*="\\draw[decoration={brace},decorate]
+            ($(b1-1),$hz) -- node[left] {\\tiny{$labeln}} ($(b1-1),$(hz+hp/3));
+            "
+            S=trunc(rfpf_a/(Astm*2/3)*100)/100;#intermedio
+            labeln="\$A_{st}:$rfpf_n @ $S\$";
+            labels*="\\draw[decoration={brace},decorate]
+            ($(b1-1),$(hz+hp/3)) -- node[left] {\\tiny{$labeln}} ($(b1-1),$(hz+2*hp/3));
+            "
+            S=trunc(rfpf_a/(Astu*2/3)*100)/100;#arriba
+            labeln="\$A_{st}:$rfpf_n @ $S\$";
+            labels*="\\draw[decoration={brace},decorate]
+            ($(b1-1),$(hz+2*hp/3)) -- node[left] {\\tiny{$labeln}} ($(b1-1),$(hz+hp));
+            "
+
+            #posterior
+            S=trunc(rfpp_a/(Astd/3)*100)/100;#abajo
+            labeln="\$A_{st}:$rfpp_n @ $S\$";
+            labels*="\\draw[decoration={brace,mirror},decorate]
+            ($(b1+t2+t1+t3+1),$hz) -- node[right] {\\tiny{$labeln}} ($(b1+t2+t1+t3+1),$(hz+hp/3));
+            "
+            S=trunc(rfpp_a/(Astm/3)*100)/100;#intermedio
+            labeln="\$A_{st}:$rfpp_n @ $S\$";
+            labels*="\\draw[decoration={brace,mirror},decorate]
+            ($(b1+t2+t1+t3+1),$(hz+hp/3)) -- node[right] {\\tiny{$labeln}} ($(b1+t2+t1+t3+1),$(hz+2*hp/3));
+            "
+            S=trunc(rfpp_a/(Astu/3)*100)/100;#arriba
+            labeln="\$A_{st}:$rfpp_n @ $S\$";
+            labels*="\\draw[decoration={brace,mirror},decorate]
+            ($(b1+t2+t1+t3+1),$(hz+2*hp/3)) -- node[right] {\\tiny{$labeln}} ($(b1+t2+t1+t3+1),$(hz+hp));
+            "
+
+            #Zapata
+            #coordenadas de los nodos en cara inferior de la zapata
+            xpi=0; ypi=0;
+            xps=b1+t2+t1+t3+b2; yps=0;
+            #obteniendo coordenadas para el acero de refuerzo en la cara
+            #inferior de la zapata
+            rzi_path=VolatileArray(zeros(Float64,0),0,0);
+            rzi_path[1,1]=rz;
+            rzi_path[1,2]=rz+.15;
+            rzi_path[2,1]=rz;
+            rzi_path[2,2]=rz;
+            rzi_path[3,1]=xps-rz;
+            rzi_path[3,2]=rz;
+            rzi_path[4,1]=xps-rz;
+            rzi_path[4,2]=rz+.15;
+
+            #para refuerzo transversal
+            S=trunc(rfpz_a/(0.0018*hz)*100)/100
+            rzit_path=VolatileArray(zeros(Float64,0),0,0);#para refuerzo transversal
+            rzit_path[1,1]=rz+rfpz_d/2;
+            rzit_path[1,2]=rz+rfpz_d/2;
+            rzit_path[2,1]=xps-rz-rfpz_d/2;
+            rzit_path[2,2]=rz+rfpz_d/2;
+            dist=hypot(rzit_path[1,1]-rzit_path[2,1],rzit_path[1,2]-rzit_path[2,2]);
+            nb=trunc(dist/S);
+            rzit_path[1,1]+=(dist-nb*S)/2;
+
+            #etiqueta de acero longitudinal y transversal-----------------------------------
+            nb-=trunc(b2/2/S);#se quiere la etiqueta en la mitad de b2
+            labeln="\$$rfpz_n @ $S\$"#etiqueta transversal
+            labelx=rzit_path[1,1]+nb*S;
+            labely=rzit_path[1,2];
+            #Obteniendo la escala para el dibujo de muro con refuerzo
+            esc=15/(b1+t2+t1+t3+b2+2.5);
+            labels*=draw_leader_lcode((labelx,labely),label=labeln,pos="below left",type="circle",diameter=0.04*esc);
+
+            labelx+=S/2;
+            labely-=rfpz_d/2;
+            S=trunc(rfpz_a/(Aszf)*100)/100
+            labeln="\$$rfpz_n @ $S\$";#etiqueta longitudinal
+            labels*=draw_leader_lcode((labelx,labely),label=labeln,pos="below right");
+
+            #coordenadas de los nodos en cara superior de la zapata
+            xpi=0; ypi=hz;
+            xps=b1+t2+t1+t3+b2; yps=hz;
+            #obteniendo coordenadas para el acero de refuerzo en la cara superior
+            #de la zapata
+            rzs_path=VolatileArray(zeros(Float64,0),0,0);
+            rzs_path[1,1]=rz;
+            rzs_path[1,2]=ypi-rz-.15;
+            rzs_path[2,1]=rz;
+            rzs_path[2,2]=ypi-rz;
+            rzs_path[3,1]=xps-rz;
+            rzs_path[3,2]=ypi-rz;
+            rzs_path[4,1]=xps-rz;
+            rzs_path[4,2]=ypi-rz-.15;
+            #para refuerzo transversal
+            S=trunc(rfpz_a/(0.0018*hz)*100)/100
+            rzst_path=VolatileArray(zeros(Float64,0),0,0);#para refuerzo transversal
+            rzst_path[1,1]=rz+rfpz_d/2;
+            rzst_path[1,2]=hz-rz-rfpz_d/2;
+            rzst_path[2,1]=xps-rz-rfpz_d/2;
+            rzst_path[2,2]=hz-rz-rfpz_d/2;
+            dist=hypot(rzst_path[1,1]-rzst_path[2,1],rzst_path[1,2]-rzst_path[2,2]);
+            nb=trunc(dist/S);
+            rzst_path[1,1]+=(dist-nb*S)/2;
+
+            #etiqueta de acero longitudinal y transversal-----------------------------------
+            nb-=trunc(b2/2/S);#se quiere la etiqueta en la mitad de b2
+            labeln="\$$rfpz_n @ $S\$"#etiqueta transversal
+            labelx=rzst_path[1,1]+nb*S;
+            labely=rzst_path[1,2];
+            labels*=draw_leader_lcode((labelx,labely),label=labeln,pos="above left",type="circle",diameter=0.04*esc);
+
+            labelx+=S/2;
+            labely+=rfpz_d/2;
+            S=trunc(rfpz_a/(Aszp)*100)/100
+            labeln="\$$rfpz_n @ $S\$";#etiqueta longitudinal
             labels*=draw_leader_lcode((labelx,labely),label=labeln);
 
-            rptu_path=VolatileArray(zeros(Float64,0),0,0);#parte superior
-            dist=hypot(rptm_path[1,1]-rptm_path[2,1],rptm_path[1,2]-rptm_path[2,2]);
-            rptu_path[1,1]=rptm_path[1,1]+ceil(dist/S)*S*Cs;
-            rptu_path[1,2]=rptm_path[1,2]+ceil(dist/S)*S*Sn;
-            rptu_path[2,1]=rp_path[2,1]-rfpp_d/(2*Sn);
-            rptu_path[2,2]=rp_path[2,2];
+            dsgn*="\\begin{figure}[H]
+            	\\centering
+                \\begin{tikzpicture}[scale=$esc]
+                    $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
+                    $(draw_soil_surface_lcode(mywall,1))
+                    $(draw_wall_dimensions_lcode(mywall))
+                    $draw_help
+                    $(draw_along_path_lcode(rzst_path,rfpz_d/2,trunc(rfpz_a/(0.0018*hz)*100)/100))
+                    $(draw_along_path_lcode(rzit_path,rfpz_d/2,trunc(rfpz_a/(0.0018*hz)*100)/100))
+                    $(draw_along_path_lcode(rftd_path,rfpf_d/2,trunc(rfpf_a/(Astd*2/3)*100)/100))
+                    $(draw_along_path_lcode(rftm_path,rfpf_d/2,trunc(rfpf_a/(Astm*2/3)*100)/100))
+                    $(draw_along_path_lcode(rftu_path,rfpf_d/2,trunc(rfpf_a/(Astu*2/3)*100)/100))
+                    $(draw_along_path_lcode(rptd_path,rfpp_d/2,trunc(rfpp_a/(Astd*1/3)*100)/100))
+                    $(draw_along_path_lcode(rptm_path,rfpp_d/2,trunc(rfpp_a/(Astm*1/3)*100)/100))
+                    $(draw_along_path_lcode(rptu_path,rfpp_d/2,trunc(rfpp_a/(Astu*1/3)*100)/100))
+                    $(draw_polyline_lcode(Array(rp_path),1,2,3,4,ops="line width=0.2mm"))
+                    $(draw_polyline_lcode(Array(rf_path),1,2,3,4,ops="line width=0.2mm"))
+                    $(draw_polyline_lcode(Array(rzi_path),1,2,3,4,ops="line width=0.2mm"))
+                    $(draw_polyline_lcode(Array(rzs_path),1,2,3,4,ops="line width=0.2mm"))
+                    $dap
+                    $labels
+                \\end{tikzpicture}
+              \\caption{Distribución de refuerzo}
+            	\\label{fig:distr}
+            \\end{figure}"
         end
-
-        #coordenadas de los nodos en la pantalla frontal
-        xpi=b1; ypi=hz;
-        xps=b1+t2; yps=hz+hp;
-        dist=hypot(xps-xpi,yps-ypi);
-        Cs=(xps-xpi)/dist;
-        Sn=(yps-ypi)/dist;
-        #obteniendo coordenadas para el acero de refuerzo principal en la cara
-        #frontal
-        rf_path=VolatileArray(zeros(Float64,0),0,0);
-        rf_path[1,1]=xps+rp/Sn-rp*Cs/Sn+0.15;
-        rf_path[1,2]=yps-rp;
-        rf_path[2,1]=xps+rp/Sn-rp*Cs/Sn;
-        rf_path[2,2]=yps-rp;
-        rf_path[3,1]=xpi+rp/Sn-(hz/Sn-rz/Sn)*Cs;
-        rf_path[3,2]=ypi-hz+rz;
-        rf_path[4,1]=xpi+rp/Sn-(hz/Sn-rz/Sn)*Cs+0.4;
-        rf_path[4,2]=ypi-hz+rz;
-        #temperatura pantalla frontal
-        rftd_path=VolatileArray(zeros(Float64,0),0,0);#parte inferior
-        S=trunc(rfpf_a/(Astd*2/3)*100)/100
-        rftd_path[1,1]=rf_path[3,1]+(hz-rz)*Cs/Sn+rfpf_d/(2*Sn);
-        rftd_path[1,2]=rf_path[3,2]+hz-rz
-        rftd_path[2,1]=rftd_path[1,1]+hp*Cs/(3*Sn);
-        rftd_path[2,2]=rftd_path[1,2]+hp/3;
-        rftm_path=VolatileArray(zeros(Float64,0),0,0);#parte media
-        rftm_path[1,1]=rftd_path[1,1]+ceil((hp/(3*Sn))/S)*S*Cs;
-        rftm_path[1,2]=rftd_path[1,2]+ceil((hp/(3*Sn))/S)*S*Sn;
-        rftm_path[2,1]=rftd_path[1,1]+hp*Cs*2/(3*Sn);
-        rftm_path[2,2]=rftd_path[1,2]+hp*2/3;
-
-        #etiqueta de acero longitudinal-----------------------------------
-        labeln="\$$rfpf_n @ $S\$";
-        S=trunc(rfpf_a/(Astm*2/3)*100)/100
-        dist=hypot(rftm_path[1,1]-rftm_path[2,1],rftm_path[1,2]-rftm_path[2,2]);
-        dist=trunc(trunc(dist/S)/2)*S+S/2;
-        labelx=rftm_path[1,1]+dist*Cs-rfpf_d/(2*Sn);
-        labely=rftm_path[1,2]+dist*Sn;
-        labels*=draw_leader_lcode((labelx,labely),label=labeln,pos="above left");
-
-
-        rftu_path=VolatileArray(zeros(Float64,0),0,0);#parte superior
-        dist=hypot(rftm_path[1,1]-rftm_path[2,1],rftm_path[1,2]-rftm_path[2,2]);
-        rftu_path[1,1]=rftm_path[1,1]+ceil(dist/S)*S*Cs;
-        rftu_path[1,2]=rftm_path[1,2]+ceil(dist/S)*S*Sn;
-        rftu_path[2,1]=rf_path[2,1]+rfpf_d/(2*Sn);
-        rftu_path[2,2]=rf_path[2,2];
-
-        #etiquetas de acero de temperatura en la pantalla---------------------
-        #frontal
-        S=trunc(rfpf_a/(Astd*2/3)*100)/100;#abajo
-        labeln="\$A_{st}:$rfpf_n @ $S\$";
-        labels*="\\draw[decoration={brace},decorate]
-        ($(b1-1),$hz) -- node[left] {\\tiny{$labeln}} ($(b1-1),$(hz+hp/3));
-        "
-        S=trunc(rfpf_a/(Astm*2/3)*100)/100;#intermedio
-        labeln="\$A_{st}:$rfpf_n @ $S\$";
-        labels*="\\draw[decoration={brace},decorate]
-        ($(b1-1),$(hz+hp/3)) -- node[left] {\\tiny{$labeln}} ($(b1-1),$(hz+2*hp/3));
-        "
-        S=trunc(rfpf_a/(Astu*2/3)*100)/100;#arriba
-        labeln="\$A_{st}:$rfpf_n @ $S\$";
-        labels*="\\draw[decoration={brace},decorate]
-        ($(b1-1),$(hz+2*hp/3)) -- node[left] {\\tiny{$labeln}} ($(b1-1),$(hz+hp));
-        "
-
-        #posterior
-        S=trunc(rfpp_a/(Astd/3)*100)/100;#abajo
-        labeln="\$A_{st}:$rfpp_n @ $S\$";
-        labels*="\\draw[decoration={brace,mirror},decorate]
-        ($(b1+t2+t1+t3+1),$hz) -- node[right] {\\tiny{$labeln}} ($(b1+t2+t1+t3+1),$(hz+hp/3));
-        "
-        S=trunc(rfpp_a/(Astm/3)*100)/100;#intermedio
-        labeln="\$A_{st}:$rfpp_n @ $S\$";
-        labels*="\\draw[decoration={brace,mirror},decorate]
-        ($(b1+t2+t1+t3+1),$(hz+hp/3)) -- node[right] {\\tiny{$labeln}} ($(b1+t2+t1+t3+1),$(hz+2*hp/3));
-        "
-        S=trunc(rfpp_a/(Astu/3)*100)/100;#arriba
-        labeln="\$A_{st}:$rfpp_n @ $S\$";
-        labels*="\\draw[decoration={brace,mirror},decorate]
-        ($(b1+t2+t1+t3+1),$(hz+2*hp/3)) -- node[right] {\\tiny{$labeln}} ($(b1+t2+t1+t3+1),$(hz+hp));
-        "
-
-        #Zapata
-        #coordenadas de los nodos en cara inferior de la zapata
-        xpi=0; ypi=0;
-        xps=b1+t2+t1+t3+b2; yps=0;
-        #obteniendo coordenadas para el acero de refuerzo en la cara
-        #inferior de la zapata
-        rzi_path=VolatileArray(zeros(Float64,0),0,0);
-        rzi_path[1,1]=rz;
-        rzi_path[1,2]=rz+.15;
-        rzi_path[2,1]=rz;
-        rzi_path[2,2]=rz;
-        rzi_path[3,1]=xps-rz;
-        rzi_path[3,2]=rz;
-        rzi_path[4,1]=xps-rz;
-        rzi_path[4,2]=rz+.15;
-
-        #para refuerzo transversal
-        S=trunc(rfpz_a/(0.0018*hz)*100)/100
-        rzit_path=VolatileArray(zeros(Float64,0),0,0);#para refuerzo transversal
-        rzit_path[1,1]=rz+rfpz_d/2;
-        rzit_path[1,2]=rz+rfpz_d/2;
-        rzit_path[2,1]=xps-rz-rfpz_d/2;
-        rzit_path[2,2]=rz+rfpz_d/2;
-        dist=hypot(rzit_path[1,1]-rzit_path[2,1],rzit_path[1,2]-rzit_path[2,2]);
-        nb=trunc(dist/S);
-        rzit_path[1,1]+=(dist-nb*S)/2;
-
-        #etiqueta de acero longitudinal y transversal-----------------------------------
-        nb-=trunc(b2/2/S);#se quiere la etiqueta en la mitad de b2
-        labeln="\$$rfpz_n @ $S\$"#etiqueta transversal
-        labelx=rzit_path[1,1]+nb*S;
-        labely=rzit_path[1,2];
-        #Obteniendo la escala para el dibujo de muro con refuerzo
-        esc=15/(b1+t2+t1+t3+b2+2.5);
-        labels*=draw_leader_lcode((labelx,labely),label=labeln,pos="below left",type="circle",diameter=0.04*esc);
-
-        labelx+=S/2;
-        labely-=rfpz_d/2;
-        S=trunc(rfpz_a/(Aszf)*100)/100
-        labeln="\$$rfpz_n @ $S\$";#etiqueta longitudinal
-        labels*=draw_leader_lcode((labelx,labely),label=labeln,pos="below right");
-
-        #coordenadas de los nodos en cara superior de la zapata
-        xpi=0; ypi=hz;
-        xps=b1+t2+t1+t3+b2; yps=hz;
-        #obteniendo coordenadas para el acero de refuerzo en la cara superior
-        #de la zapata
-        rzs_path=VolatileArray(zeros(Float64,0),0,0);
-        rzs_path[1,1]=rz;
-        rzs_path[1,2]=ypi-rz-.15;
-        rzs_path[2,1]=rz;
-        rzs_path[2,2]=ypi-rz;
-        rzs_path[3,1]=xps-rz;
-        rzs_path[3,2]=ypi-rz;
-        rzs_path[4,1]=xps-rz;
-        rzs_path[4,2]=ypi-rz-.15;
-        #para refuerzo transversal
-        S=trunc(rfpz_a/(0.0018*hz)*100)/100
-        rzst_path=VolatileArray(zeros(Float64,0),0,0);#para refuerzo transversal
-        rzst_path[1,1]=rz+rfpz_d/2;
-        rzst_path[1,2]=hz-rz-rfpz_d/2;
-        rzst_path[2,1]=xps-rz-rfpz_d/2;
-        rzst_path[2,2]=hz-rz-rfpz_d/2;
-        dist=hypot(rzst_path[1,1]-rzst_path[2,1],rzst_path[1,2]-rzst_path[2,2]);
-        nb=trunc(dist/S);
-        rzst_path[1,1]+=(dist-nb*S)/2;
-
-        #etiqueta de acero longitudinal y transversal-----------------------------------
-        nb-=trunc(b2/2/S);#se quiere la etiqueta en la mitad de b2
-        labeln="\$$rfpz_n @ $S\$"#etiqueta transversal
-        labelx=rzst_path[1,1]+nb*S;
-        labely=rzst_path[1,2];
-        labels*=draw_leader_lcode((labelx,labely),label=labeln,pos="above left",type="circle",diameter=0.04*esc);
-
-        labelx+=S/2;
-        labely+=rfpz_d/2;
-        S=trunc(rfpz_a/(Aszp)*100)/100
-        labeln="\$$rfpz_n @ $S\$";#etiqueta longitudinal
-        labels*=draw_leader_lcode((labelx,labely),label=labeln);
-
-        dsgn*="\\begin{figure}[H]
-        	\\centering
-            \\begin{tikzpicture}[scale=$esc]
-                $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
-                $(draw_soil_surface_lcode(mywall,1))
-                $(draw_wall_dimensions_lcode(mywall))
-                $draw_help
-                $(draw_along_path_lcode(rzst_path,rfpz_d/2,trunc(rfpz_a/(0.0018*hz)*100)/100))
-                $(draw_along_path_lcode(rzit_path,rfpz_d/2,trunc(rfpz_a/(0.0018*hz)*100)/100))
-                $(draw_along_path_lcode(rftd_path,rfpf_d/2,trunc(rfpf_a/(Astd*2/3)*100)/100))
-                $(draw_along_path_lcode(rftm_path,rfpf_d/2,trunc(rfpf_a/(Astm*2/3)*100)/100))
-                $(draw_along_path_lcode(rftu_path,rfpf_d/2,trunc(rfpf_a/(Astu*2/3)*100)/100))
-                $(draw_along_path_lcode(rptd_path,rfpp_d/2,trunc(rfpp_a/(Astd*1/3)*100)/100))
-                $(draw_along_path_lcode(rptm_path,rfpp_d/2,trunc(rfpp_a/(Astm*1/3)*100)/100))
-                $(draw_along_path_lcode(rptu_path,rfpp_d/2,trunc(rfpp_a/(Astu*1/3)*100)/100))
-                $(draw_polyline_lcode(Array(rp_path),1,2,3,4,ops="line width=0.2mm"))
-                $(draw_polyline_lcode(Array(rf_path),1,2,3,4,ops="line width=0.2mm"))
-                $(draw_polyline_lcode(Array(rzi_path),1,2,3,4,ops="line width=0.2mm"))
-                $(draw_polyline_lcode(Array(rzs_path),1,2,3,4,ops="line width=0.2mm"))
-                $dap
-                $labels
-            \\end{tikzpicture}
-          \\caption{Distribución de refuerzo}
-        	\\label{fig:distr}
-        \\end{figure}"
     end
-end
-#escala para la geometría del muro
-esc=15/(b1+t2+t1+t3+b2+3);
-a="
-\\documentclass[oneside,spanish]{scrbook}
-\\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
-\\usepackage{float}
-\\usepackage{siunitx}
-\\sisetup{
-  round-mode          = places,
-  round-precision     = 2,
-  detect-all=true
-}
-\\usepackage{amsmath}
-\\usepackage{tikz}
-\\usetikzlibrary{babel,calc}
-\\usetikzlibrary{arrows.meta}
-\\usepackage{xparse}
-\\usepackage{pgfplots}
-\\pgfplotsset{compat=newest}
-\\usepgfplotslibrary{units}
-% Para poder acotar elementos
-%ver:
-%https://tex.stackexchange.com/a/180110/203837
-%https://tex.stackexchange.com/a/298345/203837
-\\usepackage{ifluatex}
-\\ifluatex
-\\usepackage{pdftexcmds}
-\\makeatletter
-\\let\\pdfstrcmp\\pdf@strcmp
-\\let\\pdffilemoddate\\pdf@filemoddate
-\\makeatother
-\\fi
-\\tikzset{%
-    Cote node/.style={
-        midway,
-        fill=white,
-        inner sep=1.5pt,
-        outer sep=2pt
-    },
-    Cote arrow/.style={
-        <->,
-        >=latex,
-        very thin
+    #escala para la geometría del muro
+    esc=15/(b1+t2+t1+t3+b2+3);
+    a="
+    \\documentclass[oneside,spanish]{scrbook}
+    \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
+    \\usepackage{float}
+    \\usepackage{siunitx}
+    \\sisetup{
+      round-mode          = places,
+      round-precision     = 2,
+      detect-all=true
     }
-}
-
-\\makeatletter
-\\NewDocumentCommand{\\Cote}{
-    s       % acotación con flechas afuera
-    D<>{1.5pt} % desplazamiento de línea
-    O{.75cm}    % desplazamiento de acotación
-    m       % primer punto
-    m       % segundo punto
-    m       % etiqueta
-    D<>{o}  % () coordenadas -> ángulo
-            % h -> horizontal,
-            % v -> vertical
-            % o lo que sea -> oblicuo
-    O{}     % parámetro tikzset
-    }{
-
-    {\\tikzset{#8}
-
-    \\coordinate (@1) at #4 ;
-    \\coordinate (@2) at #5 ;
-
-    \\if #7H % acotar línea horizontal
-        \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
-        \\coordinate (@5) at (\$#5+(#3,0)\$) ;
-        \\coordinate (@4) at (\$#4+(#3,0)\$) ;
-    \\else
-    \\if #7V % acotar línea vertical
-        \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
-        \\coordinate (@5) at (\$#5+(0,#3)\$) ;
-        \\coordinate (@4) at (\$#4+(0,#3)\$) ;
-    \\else
-    \\if #7v % acotación vertical
-        \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
-        \\coordinate (@4) at (@0|-@1) ;
-        \\coordinate (@5) at (@0|-@2) ;
-    \\else
-    \\if #7h % acotación horizontal
-        \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (0,#3)\$) ;
-        \\coordinate (@4) at (@0-|@1) ;
-        \\coordinate (@5) at (@0-|@2) ;
-    \\else % acotación concava
-    \\ifnum\\pdfstrcmp{\\unexpanded\\expandafter{\\@car#7\\@nil}}{(}=\\z@
-        \\coordinate (@5) at (\$#7!#3!#5\$) ;
-        \\coordinate (@4) at (\$#7!#3!#4\$) ;
-    \\else % acotación oblicua
-        \\coordinate (@5) at (\$#5!#3!90:#4\$) ;
-        \\coordinate (@4) at (\$#4!#3!-90:#5\$) ;
-    \\fi\\fi\\fi\\fi\\fi
-
-    \\draw[very thin,shorten >= #2,shorten <= -2*#2] (@4) -- #4 ;
-    \\draw[very thin,shorten >= #2,shorten <= -2*#2] (@5) -- #5 ;
-
-    \\IfBooleanTF #1 {% con estrella
-    \\draw[Cote arrow,-] (@4) -- (@5)
-        node[Cote node] {#6\\strut};
-    \\draw[Cote arrow,<-] (@4) -- (\$(@4)!-6pt!(@5)\$) ;
-    \\draw[Cote arrow,<-] (@5) -- (\$(@5)!-6pt!(@4)\$) ;
-    }{% sin estrella
-    \\ifnum\\pdfstrcmp{\\unexpanded\\expandafter{\\@car#7\\@nil}}{(}=\\z@
-        \\draw[Cote arrow] (@5) to[bend right]
-            node[Cote node] {#6\\strut} (@4) ;
-    \\else
-    \\draw[Cote arrow] (@4) -- (@5)
-        node[Cote node] {#6\\strut};
+    \\usepackage{amsmath}
+    \\usepackage{tikz}
+    \\usetikzlibrary{babel,calc}
+    \\usetikzlibrary{arrows.meta}
+    \\usepackage{xparse}
+    \\usepackage{pgfplots}
+    \\pgfplotsset{compat=newest}
+    \\usepgfplotslibrary{units}
+    % Para poder acotar elementos
+    %ver:
+    %https://tex.stackexchange.com/a/180110/203837
+    %https://tex.stackexchange.com/a/298345/203837
+    \\usepackage{ifluatex}
+    \\ifluatex
+    \\usepackage{pdftexcmds}
+    \\makeatletter
+    \\let\\pdfstrcmp\\pdf@strcmp
+    \\let\\pdffilemoddate\\pdf@filemoddate
+    \\makeatother
     \\fi
-    }}
+    \\tikzset{%
+        Cote node/.style={
+            midway,
+            fill=white,
+            inner sep=1.5pt,
+            outer sep=2pt
+        },
+        Cote arrow/.style={
+            <->,
+            >=latex,
+            very thin
+        }
     }
 
-\\makeatother
-\\setcounter{secnumdepth}{3}
-\\begin{document}
-\\chapter{Reporte de cálculo del muro H=$(hp+hz) m}
-\\section{Geometría del muro}
+    \\makeatletter
+    \\NewDocumentCommand{\\Cote}{
+        s       % acotación con flechas afuera
+        D<>{1.5pt} % desplazamiento de línea
+        O{.75cm}    % desplazamiento de acotación
+        m       % primer punto
+        m       % segundo punto
+        m       % etiqueta
+        D<>{o}  % () coordenadas -> ángulo
+                % h -> horizontal,
+                % v -> vertical
+                % o lo que sea -> oblicuo
+        O{}     % parámetro tikzset
+        }{
 
-\\begin{figure}[H]
-	\\centering
-    \\begin{tikzpicture}[scale=$esc]
-        $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
-        $(draw_polyline_lcode(Array(grav.nod),5,8,ops="dashed"))
-        $(t3!=0 ? draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed") : "")
-        $(t2!=0 ? draw_polyline_lcode(Array(grav.nod),6,9,ops="dashed") : "")
-        $(draw_elm_label_lcode(prop))
-        $(draw_soilp_rs_lcode(grav,-1,1))
-        $(draw_soilp_ls_lcode(grav,maximum(grav.nod[:,1])+1,-0.5-mywall.D/2))
-        $(draw_soil_surface_lcode(mywall,1))
-        $(draw_spliners_lcode(grav))
-        $(draw_wall_dimensions_lcode(mywall))
-        $(draw_qload_lcode(mywall,1))
-    \\end{tikzpicture}
-  \\caption{Geometría del muro de contención}
-	\\label{fig:geom}
-\\end{figure}
-\\section{Cálculo}
-Para calcular la coeficiente de presión activa de Rankine usamos:\\\\
-\\begin{multline}
-$(ka_rankine_equation_lcode(c=1))
-\\end{multline}
+        {\\tikzset{#8}
 
-Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
-\\begin{equation}
-$(ka_rankine_equation_lcode())
-\\end{equation}\\\\
+        \\coordinate (@1) at #4 ;
+        \\coordinate (@2) at #5 ;
 
-Reemplazando los parámetros correspondientes obtenemos:
-\\begin{table}[H]
-\\caption{Coeficientes de presión activa y fuerzas del terreno}
-\\label{tab:rsf}
-\\centering
-\\resizebox{\\linewidth}{!}{
-\\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
-$(print_rsf_lcode(rsf))
-\\end{tabular}}
-\\end{table}
-\\ifdim 0.0 pt=$(round(mywall.q,digits=0)) pt
-\\else
-    Por su parte, las fuerzas debidas a la carga distribuida son:
+        \\if #7H % acotar línea horizontal
+            \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
+            \\coordinate (@5) at (\$#5+(#3,0)\$) ;
+            \\coordinate (@4) at (\$#4+(#3,0)\$) ;
+        \\else
+        \\if #7V % acotar línea vertical
+            \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
+            \\coordinate (@5) at (\$#5+(0,#3)\$) ;
+            \\coordinate (@4) at (\$#4+(0,#3)\$) ;
+        \\else
+        \\if #7v % acotación vertical
+            \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
+            \\coordinate (@4) at (@0|-@1) ;
+            \\coordinate (@5) at (@0|-@2) ;
+        \\else
+        \\if #7h % acotación horizontal
+            \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (0,#3)\$) ;
+            \\coordinate (@4) at (@0-|@1) ;
+            \\coordinate (@5) at (@0-|@2) ;
+        \\else % acotación concava
+        \\ifnum\\pdfstrcmp{\\unexpanded\\expandafter{\\@car#7\\@nil}}{(}=\\z@
+            \\coordinate (@5) at (\$#7!#3!#5\$) ;
+            \\coordinate (@4) at (\$#7!#3!#4\$) ;
+        \\else % acotación oblicua
+            \\coordinate (@5) at (\$#5!#3!90:#4\$) ;
+            \\coordinate (@4) at (\$#4!#3!-90:#5\$) ;
+        \\fi\\fi\\fi\\fi\\fi
+
+        \\draw[very thin,shorten >= #2,shorten <= -2*#2] (@4) -- #4 ;
+        \\draw[very thin,shorten >= #2,shorten <= -2*#2] (@5) -- #5 ;
+
+        \\IfBooleanTF #1 {% con estrella
+        \\draw[Cote arrow,-] (@4) -- (@5)
+            node[Cote node] {#6\\strut};
+        \\draw[Cote arrow,<-] (@4) -- (\$(@4)!-6pt!(@5)\$) ;
+        \\draw[Cote arrow,<-] (@5) -- (\$(@5)!-6pt!(@4)\$) ;
+        }{% sin estrella
+        \\ifnum\\pdfstrcmp{\\unexpanded\\expandafter{\\@car#7\\@nil}}{(}=\\z@
+            \\draw[Cote arrow] (@5) to[bend right]
+                node[Cote node] {#6\\strut} (@4) ;
+        \\else
+        \\draw[Cote arrow] (@4) -- (@5)
+            node[Cote node] {#6\\strut};
+        \\fi
+        }}
+        }
+
+    \\makeatother
+    \\setcounter{secnumdepth}{3}
+    \\begin{document}
+    \\chapter{Reporte de cálculo del muro H=$(hp+hz) m}
+    \\section{Geometría del muro}
+
+    \\begin{figure}[H]
+    	\\centering
+        \\begin{tikzpicture}[scale=$esc]
+            $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
+            $(draw_polyline_lcode(Array(grav.nod),5,8,ops="dashed"))
+            $(t3!=0 ? draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed") : "")
+            $(t2!=0 ? draw_polyline_lcode(Array(grav.nod),6,9,ops="dashed") : "")
+            $(draw_elm_label_lcode(prop))
+            $(draw_soilp_rs_lcode(grav,-1,1))
+            $(draw_soilp_ls_lcode(grav,maximum(grav.nod[:,1])+1,-0.5-mywall.D/2))
+            $(draw_soil_surface_lcode(mywall,1))
+            $(draw_spliners_lcode(grav))
+            $(draw_wall_dimensions_lcode(mywall))
+            $(draw_qload_lcode(mywall,1))
+        \\end{tikzpicture}
+      \\caption{Geometría del muro de contención}
+    	\\label{fig:geom}
+    \\end{figure}
+    \\section{Cálculo}
+    Para calcular la coeficiente de presión activa de Rankine usamos:\\\\
+    \\begin{multline}
+    $(ka_rankine_equation_lcode(c=1))
+    \\end{multline}
+
+    Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
+    \\begin{equation}
+    $(ka_rankine_equation_lcode())
+    \\end{equation}\\\\
+
+    Reemplazando los parámetros correspondientes obtenemos:
     \\begin{table}[H]
-    \\caption{Fuerzas debidas a la carga distribuida \$q=$(mywall.q)KN/m^2\$}
-    \\label{tab:uf}
+    \\caption{Coeficientes de presión activa y fuerzas del terreno}
+    \\label{tab:rsf}
     \\centering
-    \\begin{tabular}{|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
-    $(print_uf_lcode(uf))
+    \\resizebox{\\linewidth}{!}{
+    \\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+    $(print_rsf_lcode(rsf))
+    \\end{tabular}}
+    \\end{table}
+    \\ifdim 0.0 pt=$(round(mywall.q,digits=0)) pt
+    \\else
+        Por su parte, las fuerzas debidas a la carga distribuida son:
+        \\begin{table}[H]
+        \\caption{Fuerzas debidas a la carga distribuida \$q=$(mywall.q)KN/m^2\$}
+        \\label{tab:uf}
+        \\centering
+        \\begin{tabular}{|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+        $(print_uf_lcode(uf))
+        \\end{tabular}
+        \\end{table}
+    \\fi
+    \$F_xb_y\$ es el momento actuante principal y \$F_yb_x\$ contribuye a la
+    resistencia. Las fuerzas generadas por el peso del muro se muestran en la
+    siguiente tabla:
+    \\begin{table}[H]
+    \\caption{Fuerzas generadas por el muro}
+    \\label{tab:wforce}
+    \\centering
+    \\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{2cm}|m{1.5cm}|m{2.5cm}|}
+    $(print_wf_lcode(prop))
     \\end{tabular}
     \\end{table}
-\\fi
-\$F_xb_y\$ es el momento actuante principal y \$F_yb_x\$ contribuye a la
-resistencia. Las fuerzas generadas por el peso del muro se muestran en la
-siguiente tabla:
-\\begin{table}[H]
-\\caption{Fuerzas generadas por el muro}
-\\label{tab:wforce}
-\\centering
-\\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{2cm}|m{1.5cm}|m{2.5cm}|}
-$(print_wf_lcode(prop))
-\\end{tabular}
-\\end{table}
 
-Para calcular el coeficiente de presión pasiva de Rankine usamos:\\\\
-\\begin{multline}
-$(kp_rankine_equation_lcode(c=1))
-\\end{multline}
+    Para calcular el coeficiente de presión pasiva de Rankine usamos:\\\\
+    \\begin{multline}
+    $(kp_rankine_equation_lcode(c=1))
+    \\end{multline}
 
-Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
-\\begin{equation}
-$(kp_rankine_equation_lcode())
-\\end{equation}\\\\
+    Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
+    \\begin{equation}
+    $(kp_rankine_equation_lcode())
+    \\end{equation}\\\\
 
-Reemplazando los parámetros correspondientes obtenemos:
-\\begin{table}[H]
-\\caption{Coeficientes de presión pasiva y fuerzas del terreno}
-\\label{tab:rsf}
-\\centering
-\\resizebox{\\linewidth}{!}{
-\\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
-$(print_lsf_lcode(lsf))
-\\end{tabular}}
-\\end{table}
-\$F_x\$ y el momento que genera (\$F_xb_y\$) contribuyen a la resistencia por
-deslizamiento y por volteo respectivamente, \$F_yb_x\$ es un momento actuante.\\\\
+    Reemplazando los parámetros correspondientes obtenemos:
+    \\begin{table}[H]
+    \\caption{Coeficientes de presión pasiva y fuerzas del terreno}
+    \\label{tab:rsf}
+    \\centering
+    \\resizebox{\\linewidth}{!}{
+    \\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+    $(print_lsf_lcode(lsf))
+    \\end{tabular}}
+    \\end{table}
+    \$F_x\$ y el momento que genera (\$F_xb_y\$) contribuyen a la resistencia por
+    deslizamiento y por volteo respectivamente, \$F_yb_x\$ es un momento actuante.\\\\
 
-Factor de seguridad contra el volteo:\\\\
-\\begin{align*}
-FS_{volteo}=\\dfrac{\\Sigma M_R}{M_o}=\\dfrac{$Mrs}{$Mas}=
-    $(round(factors[1],digits=2))$fsvs\\\\
-\\end{align*}
+    Factor de seguridad contra el volteo:\\\\
+    \\begin{align*}
+    FS_{volteo}=\\dfrac{\\Sigma M_R}{M_o}=\\dfrac{$Mrs}{$Mas}=
+        $(round(factors[1],digits=2))$fsvs\\\\
+    \\end{align*}
 
-Factor de seguridad contra el deslizamiento:\\\\
-\\begin{align*}
-FS_{deslizamiento}&=$(slip_factor_equation_lcode())\\\\
-&=\\dfrac{$(vfs)}{$(pas)}\\\\
-&=$(round(factors[2],digits=2))$fsds
-\\end{align*}
-Revisión por falla por capacidad de carga:\\\\
-\\begin{align*}
-e&=$(eccentricity_equation_lcode())\\\\
-&=\\dfrac{$(round(B,digits=2))}{2}-\\dfrac{($Mrs)-($Mas)}{$vfs1}\\\\
-&=$(round(factors[3],digits=3)) m$es\\\\
-\\end{align*}
-\\begin{align*}
-q_{tal\\acute on}^{pie}&=$(soil_pressure_equation_lcode())\\\\
-&=\\dfrac{$vfs1}{$(round(B,digits=2))}\\left(1\\pm\\dfrac
-    {6\\times$(round(factors[3],digits=3))}{$(round(B,digits=2))}\\right)\\\\
-q_{pie}&=$(round(factors[4],digits=2))KN/m^2\\\\
-q_{tal\\acute on}&=$(round(factors[5],digits=2))KN/m^2$qps
-\\end{align*}
-$(dsgn)
-\\end{document}
-"
-open("prueba1.tex", "w") do f
-           write(f, a)
-           end
-#run(pipeline(`pdflatex prueba1`,stdout="log.txt",stderr="err.txt"));
-run(`pdflatex prueba1`);
-    if Sys.iswindows()
-        run(`cmd /c start prueba1.pdf`);
-    elseif Sys.islinux()
-        run(`xdg-open prueba1.pdf`)
-    else
+    Factor de seguridad contra el deslizamiento:\\\\
+    \\begin{align*}
+    FS_{deslizamiento}&=$(slip_factor_equation_lcode())\\\\
+    &=\\dfrac{$(vfs)}{$(pas)}\\\\
+    &=$(round(factors[2],digits=2))$fsds
+    \\end{align*}
+    Revisión por falla por capacidad de carga:\\\\
+    \\begin{align*}
+    e&=$(eccentricity_equation_lcode())\\\\
+    &=\\dfrac{$(round(B,digits=2))}{2}-\\dfrac{($Mrs)-($Mas)}{$vfs1}\\\\
+    &=$(round(factors[3],digits=3)) m$es\\\\
+    \\end{align*}
+    \\begin{align*}
+    q_{tal\\acute on}^{pie}&=$(soil_pressure_equation_lcode())\\\\
+    &=\\dfrac{$vfs1}{$(round(B,digits=2))}\\left(1\\pm\\dfrac
+        {6\\times$(round(factors[3],digits=3))}{$(round(B,digits=2))}\\right)\\\\
+    q_{pie}&=$(round(factors[4],digits=2))KN/m^2\\\\
+    q_{tal\\acute on}&=$(round(factors[5],digits=2))KN/m^2$qps
+    \\end{align*}
+    $(dsgn)
+    \\end{document}
+    "
+    open("prueba1.tex", "w") do f
+               write(f, a)
+               end
+    #run(pipeline(`pdflatex prueba1`,stdout="log.txt",stderr="err.txt"));
+    run(`pdflatex prueba1`);
+        if Sys.iswindows()
+            run(`cmd /c start prueba1.pdf`);
+        elseif Sys.islinux()
+            run(`xdg-open prueba1.pdf`)
+        else
+        end
+end
+
+function coulomb_report(mywall::typeIwall;kwargs...)
+    hp=mywall.hp;
+    hz=mywall.hz;
+    t1=mywall.t1;
+    t2=mywall.t2;
+    t3=mywall.t3;
+    b1=mywall.b1;
+    b2=mywall.b2;
+    grav=mywall.model;
+    prop=wall_forces(grav);
+    rsf=soil_coulomb_forces_rs(grav,alpha=mywall.alpha);
+    lsf=soil_rankine_forces_ls(grav);
+
+    ignore_pasive_moments=0;#para ignorar el momento resistente de la fuerza pasiva
+    #se ignora cuando ignore_pasive_moments=1
+    if haskey(kwargs,:ignore_pasive_moments)
+        ignore_pasive_moments=kwargs[:ignore_pasive_moments];
+        if typeof(ignore_pasive_moments)!=Int64
+            error("ignore_pasive_moments no es del tipo esperado")
+        end
+        if ignore_pasive_moments==1 lsf[1,5]=0; end
     end
+
+    uf=uload_coulomb_forces_rs(grav,mywall.q,mywall.alpha);
+    factors=check_stab_wt1(grav,prop,rsf,lsf,arsf=uf);
+
+    #---------------------------------------------
+    #expresión para factor de seguridad por volteo
+    Mr=sum(prop[:,5]);
+    Mrs="$(round(Mr,digits=2))"
+    Mr=sum(rsf[:,6]);
+    if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
+    Mr=sum(lsf[:,5]);
+    if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
+    Mr=sum(uf[:,6]);
+    if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
+    #los momentos actuantes se encuetran en la 5ta columna de rsf y 6ta columna
+    #de lsf
+    Ma=sum(rsf[:,5]);
+    Mas="$(round(Ma,digits=2))";
+    Ma=sum(lsf[:,6]);
+    if Ma!=0 Mas*="+$(round(Ma,digits=2))" end
+    Ma=sum(uf[:,5]);
+    if Ma!=0 Mas*="+$(round(Ma,digits=2))" end
+
+    #-------------------------------------------------------
+    #expresión para factor de seguridad contra deslizamiento
+    vf=sum(prop[:,4]);
+    vfs="($(round(vf,digits=2))";
+    vf=sum(rsf[:,2]);
+    if vf!=0 vfs*="+$(round(vf,digits=2))" end
+    vf=sum(lsf[:,2]);
+    if vf!=0 vfs*="+$(round(vf,digits=2))" end
+    vf=sum(uf[:,2]);
+    if vf!=0 vfs*="+$(round(vf,digits=2))" end
+    vfs*=")"; vfs1=vfs;
+    #obteniendo las propiedas de suelo
+    #obteniendo el último estrato del campo plinels
+    id=grav.plinels[end,3];
+    fi=grav.soilprop[id,1];
+    c=grav.soilprop[id,2];
+    vfs*="\\tan(\\frac{2}{3}\\times$(round(fi,digits=2))^\\circ)";
+    B=round(t1+t2+t3+b1+b2,digits=2);
+    vfs*="+$B\\times\\frac{2}{3}\\times$(round(c,digits=2))";
+    #el empuje pasivo (resistente), primera columna de lsf
+    pp=sum(lsf[:,1]);
+    vfs*="+$(round(pp,digits=2))";
+    #empuje activo (actuante), primera columna de rsf
+    pa=sum(rsf[:,1]);
+    pas="$(round(pa,digits=2))";
+    pa=sum(uf[:,1]);
+    if pa!=0 pas*="+$(round(pa,digits=2))" end
+
+    #-------------------------------
+    #texto o mensaje de verificación Ok!! cuando cumple.
+    fsvs=factors[1]>2 ? ">2\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
+    fsds=factors[2]>1.5 ? ">1.5\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
+    es=factors[3]<B/6 ? "<\\dfrac{B}{6}=\\dfrac{$(round(B,digits=2))}{6}=$(round(B/6,digits=3))" : "";
+    #revisando si se ingreso la capacidad de carga
+    ncol=size(grav.soilprop)[2];
+    qa=0;
+    if ncol>=5
+        qa=grav.soilprop[id,5];
+    end
+    qps=factors[4]<qa && factors[5]<qa ?
+        "<$(round(qa,digits=2))KN/m^2\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" :
+        "";
+
+    #DISEÑO_________________________________________________________________________
+    #diseño de refuerzo, se activa mediante la inclusión de la palabra clave design=1
+    dsgn=""#salida para cuando se requiere diseño de refuerzo
+    if haskey(kwargs,:design)
+        design=kwargs[:design];
+        if design==1
+            #reservado para el diseño por la teoría de empuje de suelo de Coulomb
+            err="El diseño de refuerzo no está disponible cuando se elige el"
+            err*="análisis por la teoría de empuje de suelo de Coulomb, solo"
+            err*="se realizó el análisis de estabilidad"
+            @warn err
+        end
+    end
+    #escala para la geometría del muro
+    esc=15/(b1+t2+t1+t3+b2+3);
+    a="
+    \\documentclass[oneside,spanish]{scrbook}
+    \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
+    \\usepackage{float}
+    \\usepackage{siunitx}
+    \\sisetup{
+      round-mode          = places,
+      round-precision     = 2,
+      detect-all=true
+    }
+    \\usepackage{amsmath}
+    \\usepackage{tikz}
+    \\usetikzlibrary{babel,calc}
+    \\usetikzlibrary{arrows.meta}
+    \\usepackage{xparse}
+    \\usepackage{pgfplots}
+    \\pgfplotsset{compat=newest}
+    \\usepgfplotslibrary{units}
+    % Para poder acotar elementos
+    %ver:
+    %https://tex.stackexchange.com/a/180110/203837
+    %https://tex.stackexchange.com/a/298345/203837
+    \\usepackage{ifluatex}
+    \\ifluatex
+    \\usepackage{pdftexcmds}
+    \\makeatletter
+    \\let\\pdfstrcmp\\pdf@strcmp
+    \\let\\pdffilemoddate\\pdf@filemoddate
+    \\makeatother
+    \\fi
+    \\tikzset{%
+        Cote node/.style={
+            midway,
+            fill=white,
+            inner sep=1.5pt,
+            outer sep=2pt
+        },
+        Cote arrow/.style={
+            <->,
+            >=latex,
+            very thin
+        }
+    }
+
+    \\makeatletter
+    \\NewDocumentCommand{\\Cote}{
+        s       % acotación con flechas afuera
+        D<>{1.5pt} % desplazamiento de línea
+        O{.75cm}    % desplazamiento de acotación
+        m       % primer punto
+        m       % segundo punto
+        m       % etiqueta
+        D<>{o}  % () coordenadas -> ángulo
+                % h -> horizontal,
+                % v -> vertical
+                % o lo que sea -> oblicuo
+        O{}     % parámetro tikzset
+        }{
+
+        {\\tikzset{#8}
+
+        \\coordinate (@1) at #4 ;
+        \\coordinate (@2) at #5 ;
+
+        \\if #7H % acotar línea horizontal
+            \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
+            \\coordinate (@5) at (\$#5+(#3,0)\$) ;
+            \\coordinate (@4) at (\$#4+(#3,0)\$) ;
+        \\else
+        \\if #7V % acotar línea vertical
+            \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
+            \\coordinate (@5) at (\$#5+(0,#3)\$) ;
+            \\coordinate (@4) at (\$#4+(0,#3)\$) ;
+        \\else
+        \\if #7v % acotación vertical
+            \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
+            \\coordinate (@4) at (@0|-@1) ;
+            \\coordinate (@5) at (@0|-@2) ;
+        \\else
+        \\if #7h % acotación horizontal
+            \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (0,#3)\$) ;
+            \\coordinate (@4) at (@0-|@1) ;
+            \\coordinate (@5) at (@0-|@2) ;
+        \\else % acotación concava
+        \\ifnum\\pdfstrcmp{\\unexpanded\\expandafter{\\@car#7\\@nil}}{(}=\\z@
+            \\coordinate (@5) at (\$#7!#3!#5\$) ;
+            \\coordinate (@4) at (\$#7!#3!#4\$) ;
+        \\else % acotación oblicua
+            \\coordinate (@5) at (\$#5!#3!90:#4\$) ;
+            \\coordinate (@4) at (\$#4!#3!-90:#5\$) ;
+        \\fi\\fi\\fi\\fi\\fi
+
+        \\draw[very thin,shorten >= #2,shorten <= -2*#2] (@4) -- #4 ;
+        \\draw[very thin,shorten >= #2,shorten <= -2*#2] (@5) -- #5 ;
+
+        \\IfBooleanTF #1 {% con estrella
+        \\draw[Cote arrow,-] (@4) -- (@5)
+            node[Cote node] {#6\\strut};
+        \\draw[Cote arrow,<-] (@4) -- (\$(@4)!-6pt!(@5)\$) ;
+        \\draw[Cote arrow,<-] (@5) -- (\$(@5)!-6pt!(@4)\$) ;
+        }{% sin estrella
+        \\ifnum\\pdfstrcmp{\\unexpanded\\expandafter{\\@car#7\\@nil}}{(}=\\z@
+            \\draw[Cote arrow] (@5) to[bend right]
+                node[Cote node] {#6\\strut} (@4) ;
+        \\else
+        \\draw[Cote arrow] (@4) -- (@5)
+            node[Cote node] {#6\\strut};
+        \\fi
+        }}
+        }
+
+    \\makeatother
+    \\setcounter{secnumdepth}{3}
+    \\begin{document}
+    \\chapter{Reporte de cálculo del muro H=$(hp+hz) m}
+    \\section{Geometría del muro}
+
+    \\begin{figure}[H]
+    	\\centering
+        \\begin{tikzpicture}[scale=$esc]
+            $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
+            $(draw_polyline_lcode(Array(grav.nod),5,8,ops="dashed"))
+            $(t3!=0 ? draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed") : "")
+            $(t2!=0 ? draw_polyline_lcode(Array(grav.nod),6,9,ops="dashed") : "")
+            $(draw_elm_label_lcode(prop))
+            $(draw_soilp_rs_lcode(grav,-1,1))
+            $(draw_soilp_ls_lcode(grav,maximum(grav.nod[:,1])+1,-0.5-mywall.D/2))
+            $(draw_soil_surface_lcode(mywall,1))
+            $(draw_spliners_lcode(grav))
+            $(draw_wall_dimensions_lcode(mywall))
+            $(draw_qload_lcode(mywall,1))
+        \\end{tikzpicture}
+      \\caption{Geometría del muro de contención}
+    	\\label{fig:geom}
+    \\end{figure}
+    \\section{Cálculo}
+    Para calcular la coeficiente de presión activa de Coulomb usamos:\\\\
+    \\begin{equation}
+    $(ka_coulomb_equation_lcode())
+    \\end{equation}
+
+    Reemplazando los parámetros correspondientes obtenemos:
+    \\begin{table}[H]
+    \\caption{Coeficientes de presión activa y fuerzas del terreno}
+    \\label{tab:rsf}
+    \\centering
+    \\resizebox{\\linewidth}{!}{
+    \\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+    $(print_rsf_lcode(rsf))
+    \\end{tabular}}
+    \\end{table}
+    \\ifdim 0.0 pt=$(round(mywall.q,digits=0)) pt
+    \\else
+        Por su parte, las fuerzas debidas a la carga distribuida son:
+        \\begin{table}[H]
+        \\caption{Fuerzas debidas a la carga distribuida \$q=$(mywall.q)KN/m^2\$}
+        \\label{tab:uf}
+        \\centering
+        \\begin{tabular}{|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+        $(print_uf_lcode(uf))
+        \\end{tabular}
+        \\end{table}
+    \\fi
+    \$F_xb_y\$ es el momento actuante principal y \$F_yb_x\$ contribuye a la
+    resistencia. Las fuerzas generadas por el peso del muro se muestran en la
+    siguiente tabla:
+    \\begin{table}[H]
+    \\caption{Fuerzas generadas por el muro}
+    \\label{tab:wforce}
+    \\centering
+    \\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{2cm}|m{1.5cm}|m{2.5cm}|}
+    $(print_wf_lcode(prop))
+    \\end{tabular}
+    \\end{table}
+
+    Para calcular el coeficiente de presión pasiva de Rankine usamos:\\\\
+    \\begin{multline}
+    $(kp_rankine_equation_lcode(c=1))
+    \\end{multline}
+
+    Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
+    \\begin{equation}
+    $(kp_rankine_equation_lcode())
+    \\end{equation}\\\\
+
+    Reemplazando los parámetros correspondientes obtenemos:
+    \\begin{table}[H]
+    \\caption{Coeficientes de presión pasiva y fuerzas del terreno}
+    \\label{tab:rsf}
+    \\centering
+    \\resizebox{\\linewidth}{!}{
+    \\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+    $(print_lsf_lcode(lsf))
+    \\end{tabular}}
+    \\end{table}
+    \$F_x\$ y el momento que genera (\$F_xb_y\$) contribuyen a la resistencia por
+    deslizamiento y por volteo respectivamente, \$F_yb_x\$ es un momento actuante.\\\\
+
+    Factor de seguridad contra el volteo:\\\\
+    \\begin{align*}
+    FS_{volteo}=\\dfrac{\\Sigma M_R}{M_o}=\\dfrac{$Mrs}{$Mas}=
+        $(round(factors[1],digits=2))$fsvs\\\\
+    \\end{align*}
+
+    Factor de seguridad contra el deslizamiento:\\\\
+    \\begin{align*}
+    FS_{deslizamiento}&=$(slip_factor_equation_lcode())\\\\
+    &=\\dfrac{$(vfs)}{$(pas)}\\\\
+    &=$(round(factors[2],digits=2))$fsds
+    \\end{align*}
+    Revisión por falla por capacidad de carga:\\\\
+    \\begin{align*}
+    e&=$(eccentricity_equation_lcode())\\\\
+    &=\\dfrac{$(round(B,digits=2))}{2}-\\dfrac{($Mrs)-($Mas)}{$vfs1}\\\\
+    &=$(round(factors[3],digits=3)) m$es\\\\
+    \\end{align*}
+    \\begin{align*}
+    q_{tal\\acute on}^{pie}&=$(soil_pressure_equation_lcode())\\\\
+    &=\\dfrac{$vfs1}{$(round(B,digits=2))}\\left(1\\pm\\dfrac
+        {6\\times$(round(factors[3],digits=3))}{$(round(B,digits=2))}\\right)\\\\
+    q_{pie}&=$(round(factors[4],digits=2))KN/m^2\\\\
+    q_{tal\\acute on}&=$(round(factors[5],digits=2))KN/m^2$qps
+    \\end{align*}
+    $(dsgn)
+    \\end{document}
+    "
+    open("prueba1.tex", "w") do f
+               write(f, a)
+               end
+    #run(pipeline(`pdflatex prueba1`,stdout="log.txt",stderr="err.txt"));
+    run(`pdflatex prueba1`);
+        if Sys.iswindows()
+            run(`cmd /c start prueba1.pdf`);
+        elseif Sys.islinux()
+            run(`xdg-open prueba1.pdf`)
+        else
+        end
 end
 
 """
@@ -1289,6 +1649,10 @@ function ka_rankine_equation_lcode(;c::Int64=0)
     end
     return out;
 end
+
+ka_coulomb_equation_lcode()="K_a=\\frac{\\sen^2(\\phi'+\\beta)}{\\sen^2\\beta\\sen(\\beta-
+    \\delta')\\left[1+\\sqrt{\\frac{\\sen(\\phi'+\\delta')\\sen(\\phi'-\\alpha)}
+    {\\sen(\\beta-\\delta')\\sen(\\alpha+\\beta)}}\\right]^2}";
 
 function kp_rankine_equation_lcode(;c::Int64=0)
     out="";
