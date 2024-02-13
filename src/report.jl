@@ -1,4 +1,4 @@
-#revisión 0.4.4 10-02-2024, 01:25 Julia 1.9.2
+#revisión 0.4.5 12-02-2024, 23:15 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
     if haskey(kwargs,:analysis_type)
@@ -1435,7 +1435,7 @@ function coulomb_report(mywall::typeIwall;kwargs...)
             $(t3!=0 ? draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed") : "")
             $(t2!=0 ? draw_polyline_lcode(Array(grav.nod),6,9,ops="dashed") : "")
             $(draw_elm_label_lcode(prop))
-            $(draw_soilp_rs_lcode(grav,-1,1))
+            $(draw_soilp_rs_lcode(grav,1,1))
             $(draw_soilp_ls_lcode(grav,maximum(grav.nod[:,1])+1,-0.5-mywall.D/2))
             $(draw_soil_surface_lcode(mywall,1))
             $(draw_spliners_lcode(grav))
