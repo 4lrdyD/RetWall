@@ -1,4 +1,4 @@
-#revisión 0.0.3 22-11-2021, 22:59 Julia1.6.4
+#revisión 0.0.4 16-02-2024, 23:14 Julia1.9.2
 """
     ka_rankine(fi::Real,alpha::Real)
 Calcula el coeficiente de presión activa de Rankine para un
@@ -89,6 +89,27 @@ function ka_coulomb(fi::Real,delta::Real,beta::Real,alpha::Real)
     return ((sin(fr+br))^2)/ ((sin(br))^2*sin(br-dr)*
         (1+sqrt(sin(fr+dr)*sin(fr-ar)/(sin(br-dr)*
         sin(ar+br))))^2);
+end
+
+"""
+    ka_dynamic_coulomb(fi::Real,delta::Real,beta::Real,alpha::Real,theta::Real)
+Calcula el coeficiente de presión activa dinámica de Coulomb, siendo:
+*   `fi`: el ángulo de fricción por esfuerzo efectivo
+     en grados sexagesimales.
+*   `delta`: el ángulo de fricción entre el suelo y el muro.
+*   `beta`: el ángulo de inclinación de la parte posterior
+    del muro con la horizontal.
+*   `alpha`: el ángulo de inclinación del
+    terreno con la horizontal.
+*   `theta`: Ángulo que depende de los coeficientes sísmicos según: `theta=atan(kh/(1-Kv))`
+
+Todos los ángulos deben ser ingresados en grados sexagesimales.
+"""
+function ka_dynamic_coulomb(fi::Real,delta::Real,beta::Real,alpha::Real,theta::Real)
+    #convirtiendo los ángulos
+    return ((sind(fi+beta-theta))^2)/ ((cosd(theta))*(sind(beta))^2*sind(beta-theta-delta)*
+        (1+sqrt(sind(fi+delta)*sind(fi-theta-alpha)/(sind(beta-delta-theta)*
+        sind(alpha+beta))))^2);
 end
 
 """
