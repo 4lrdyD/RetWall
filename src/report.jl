@@ -1,4 +1,4 @@
-#revisión 0.4.5 12-02-2024, 23:15 Julia 1.9.2
+#revisión 0.4.6 19-03-2024, 21:24 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
     if haskey(kwargs,:analysis_type)
@@ -1653,6 +1653,10 @@ end
 ka_coulomb_equation_lcode()="K_a=\\frac{\\sen^2(\\phi'+\\beta)}{\\sen^2\\beta\\sen(\\beta-
     \\delta')\\left[1+\\sqrt{\\frac{\\sen(\\phi'+\\delta')\\sen(\\phi'-\\alpha)}
     {\\sen(\\beta-\\delta')\\sen(\\alpha+\\beta)}}\\right]^2}";
+
+ka_dynamic_coulomb_equation_lcode()="K_a=\\frac{\\sen^2(\\phi'+\\beta-\\theta')}{\\cos\\theta'\\sen^2\\beta\\sen(\\beta-
+    \\theta'-\\delta')\\left[1+\\sqrt{\\frac{\\sen(\\phi'+\\delta')\\sen(\\phi'-\\theta'-\\alpha)}
+    {\\sen(\\beta-\\delta'-\\theta')\\sen(\\alpha+\\beta)}}\\right]^2}";
 
 function kp_rankine_equation_lcode(;c::Int64=0)
     out="";
