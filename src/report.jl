@@ -1,4 +1,4 @@
-#revisión 0.4.6 19-03-2024, 21:24 Julia 1.9.2
+#revisión 0.4.7 23-03-2024, 09:20 Julia 1.9.2
 export report;
 function report(mywall::typeIwall;kwargs...)
     if haskey(kwargs,:analysis_type)
@@ -1549,10 +1549,381 @@ function coulomb_report(mywall::typeIwall;kwargs...)
         end
 end
 
+function dynamic_coulomb_report(mywall::typeIwall;kwargs...)
+    hp=mywall.hp;
+    hz=mywall.hz;
+    t1=mywall.t1;
+    t2=mywall.t2;
+    t3=mywall.t3;
+    b1=mywall.b1;
+    b2=mywall.b2;
+    grav=mywall.model;
+    prop=wall_forces(grav);
+
+    #obteniendo los coeficientes sísmicos
+    kh=0.089;
+    if haskey(kwargs,:kh)
+        kh=kwargs[:kh];
+        if typeof(kh)<:Real
+            if kh<0 error("kh debe ser no negativo") end
+        else
+            error("kh no es del tipo esperado")
+        end
+    else
+        error("deben ingresarse los coeficientes sísmicos kh y kv")
+    end
+
+    kv=0.0;
+    if haskey(kwargs,:kv)
+        kv=kwargs[:kv];
+        if typeof(kv)<:Real
+            if kv<0 error("kv debe ser no negativo") end
+        else
+            error("kv no es del tipo esperado")
+        end
+    else
+        error("deben ingresarse los coeficientes sísmicos kh y kv")
+    end
+
+    rsf=soil_coulomb_dynamic_forces_rs(grav,alpha=mywall.alpha,Kh=kh,Kv=kv);
+    lsf=soil_rankine_forces_ls(grav);
+
+    ignore_pasive_moments=0;#para ignorar el momento resistente de la fuerza pasiva
+    #se ignora cuando ignore_pasive_moments=1
+    if haskey(kwargs,:ignore_pasive_moments)
+        ignore_pasive_moments=kwargs[:ignore_pasive_moments];
+        if typeof(ignore_pasive_moments)!=Int64
+            error("ignore_pasive_moments no es del tipo esperado")
+        end
+        if ignore_pasive_moments==1 lsf[1,5]=0; end
+    end
+
+    uf=uload_coulomb_forces_rs(grav,mywall.q,mywall.alpha);
+    factors=check_stab_wt1(grav,prop,rsf,lsf,arsf=uf);
+
+    #---------------------------------------------
+    #expresión para factor de seguridad por volteo
+    Mr=sum(prop[:,5]);
+    Mrs="$(round(Mr,digits=2))"
+    Mr=sum(rsf[:,6]);
+    if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
+    Mr=sum(lsf[:,5]);
+    if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
+    Mr=sum(uf[:,6]);
+    if Mr!=0 Mrs*="+$(round(Mr,digits=2))" end
+    #los momentos actuantes se encuetran en la 5ta columna de rsf y 6ta columna
+    #de lsf
+    Ma=sum(rsf[:,5]);
+    Mas="$(round(Ma,digits=2))";
+    Ma=sum(lsf[:,6]);
+    if Ma!=0 Mas*="+$(round(Ma,digits=2))" end
+    Ma=sum(uf[:,5]);
+    if Ma!=0 Mas*="+$(round(Ma,digits=2))" end
+
+    #-------------------------------------------------------
+    #expresión para factor de seguridad contra deslizamiento
+    vf=sum(prop[:,4]);
+    vfs="($(round(vf,digits=2))";
+    vf=sum(rsf[:,2]);
+    if vf!=0 vfs*="+$(round(vf,digits=2))" end
+    vf=sum(lsf[:,2]);
+    if vf!=0 vfs*="+$(round(vf,digits=2))" end
+    vf=sum(uf[:,2]);
+    if vf!=0 vfs*="+$(round(vf,digits=2))" end
+    vfs*=")"; vfs1=vfs;
+    #obteniendo las propiedas de suelo
+    #obteniendo el último estrato del campo plinels
+    id=grav.plinels[end,3];
+    fi=grav.soilprop[id,1];
+    c=grav.soilprop[id,2];
+    vfs*="\\tan(\\frac{2}{3}\\times$(round(fi,digits=2))^\\circ)";
+    B=round(t1+t2+t3+b1+b2,digits=2);
+    vfs*="+$B\\times\\frac{2}{3}\\times$(round(c,digits=2))";
+    #el empuje pasivo (resistente), primera columna de lsf
+    pp=sum(lsf[:,1]);
+    vfs*="+$(round(pp,digits=2))";
+    #empuje activo (actuante), primera columna de rsf
+    pa=sum(rsf[:,1]);
+    pas="$(round(pa,digits=2))";
+    pa=sum(uf[:,1]);
+    if pa!=0 pas*="+$(round(pa,digits=2))" end
+
+    #-------------------------------
+    #texto o mensaje de verificación Ok!! cuando cumple.
+    fsvs=factors[1]>2 ? ">2\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
+    fsds=factors[2]>1.5 ? ">1.5\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" : "";
+    es=factors[3]<B/6 ? "<\\dfrac{B}{6}=\\dfrac{$(round(B,digits=2))}{6}=$(round(B/6,digits=3))" : "";
+    #revisando si se ingreso la capacidad de carga
+    ncol=size(grav.soilprop)[2];
+    qa=0;
+    if ncol>=5
+        qa=grav.soilprop[id,5];
+    end
+    qps=factors[4]<qa && factors[5]<qa ?
+        "<$(round(qa,digits=2))KN/m^2\\quad\\textrm{\\textcolor{red}{\\textbf{Ok!!}}}" :
+        "";
+
+    #DISEÑO_________________________________________________________________________
+    #diseño de refuerzo, se activa mediante la inclusión de la palabra clave design=1
+    dsgn=""#salida para cuando se requiere diseño de refuerzo
+    if haskey(kwargs,:design)
+        design=kwargs[:design];
+        if design==1
+            #reservado para el diseño por la teoría de empuje de suelo de Coulomb
+            err="El diseño de refuerzo no está disponible cuando se elige el"
+            err*="análisis por la teoría de empuje de suelo de Coulomb, solo"
+            err*="se realizó el análisis de estabilidad"
+            @warn err
+        end
+    end
+    #escala para la geometría del muro
+    esc=15/(b1+t2+t1+t3+b2+3);
+    a="
+    \\documentclass[oneside,spanish]{scrbook}
+    \\usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
+    \\usepackage{float}
+    \\usepackage{siunitx}
+    \\sisetup{
+      round-mode          = places,
+      round-precision     = 2,
+      detect-all=true
+    }
+    \\usepackage{amsmath}
+    \\usepackage{tikz}
+    \\usetikzlibrary{babel,calc}
+    \\usetikzlibrary{arrows.meta}
+    \\usepackage{xparse}
+    \\usepackage{pgfplots}
+    \\pgfplotsset{compat=newest}
+    \\usepgfplotslibrary{units}
+    % Para poder acotar elementos
+    %ver:
+    %https://tex.stackexchange.com/a/180110/203837
+    %https://tex.stackexchange.com/a/298345/203837
+    \\usepackage{ifluatex}
+    \\ifluatex
+    \\usepackage{pdftexcmds}
+    \\makeatletter
+    \\let\\pdfstrcmp\\pdf@strcmp
+    \\let\\pdffilemoddate\\pdf@filemoddate
+    \\makeatother
+    \\fi
+    \\tikzset{%
+        Cote node/.style={
+            midway,
+            fill=white,
+            inner sep=1.5pt,
+            outer sep=2pt
+        },
+        Cote arrow/.style={
+            <->,
+            >=latex,
+            very thin
+        }
+    }
+
+    \\makeatletter
+    \\NewDocumentCommand{\\Cote}{
+        s       % acotación con flechas afuera
+        D<>{1.5pt} % desplazamiento de línea
+        O{.75cm}    % desplazamiento de acotación
+        m       % primer punto
+        m       % segundo punto
+        m       % etiqueta
+        D<>{o}  % () coordenadas -> ángulo
+                % h -> horizontal,
+                % v -> vertical
+                % o lo que sea -> oblicuo
+        O{}     % parámetro tikzset
+        }{
+
+        {\\tikzset{#8}
+
+        \\coordinate (@1) at #4 ;
+        \\coordinate (@2) at #5 ;
+
+        \\if #7H % acotar línea horizontal
+            \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
+            \\coordinate (@5) at (\$#5+(#3,0)\$) ;
+            \\coordinate (@4) at (\$#4+(#3,0)\$) ;
+        \\else
+        \\if #7V % acotar línea vertical
+            \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
+            \\coordinate (@5) at (\$#5+(0,#3)\$) ;
+            \\coordinate (@4) at (\$#4+(0,#3)\$) ;
+        \\else
+        \\if #7v % acotación vertical
+            \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (#3,0)\$) ;
+            \\coordinate (@4) at (@0|-@1) ;
+            \\coordinate (@5) at (@0|-@2) ;
+        \\else
+        \\if #7h % acotación horizontal
+            \\coordinate (@0) at (\$(\$#4!.5!#5\$) + (0,#3)\$) ;
+            \\coordinate (@4) at (@0-|@1) ;
+            \\coordinate (@5) at (@0-|@2) ;
+        \\else % acotación concava
+        \\ifnum\\pdfstrcmp{\\unexpanded\\expandafter{\\@car#7\\@nil}}{(}=\\z@
+            \\coordinate (@5) at (\$#7!#3!#5\$) ;
+            \\coordinate (@4) at (\$#7!#3!#4\$) ;
+        \\else % acotación oblicua
+            \\coordinate (@5) at (\$#5!#3!90:#4\$) ;
+            \\coordinate (@4) at (\$#4!#3!-90:#5\$) ;
+        \\fi\\fi\\fi\\fi\\fi
+
+        \\draw[very thin,shorten >= #2,shorten <= -2*#2] (@4) -- #4 ;
+        \\draw[very thin,shorten >= #2,shorten <= -2*#2] (@5) -- #5 ;
+
+        \\IfBooleanTF #1 {% con estrella
+        \\draw[Cote arrow,-] (@4) -- (@5)
+            node[Cote node] {#6\\strut};
+        \\draw[Cote arrow,<-] (@4) -- (\$(@4)!-6pt!(@5)\$) ;
+        \\draw[Cote arrow,<-] (@5) -- (\$(@5)!-6pt!(@4)\$) ;
+        }{% sin estrella
+        \\ifnum\\pdfstrcmp{\\unexpanded\\expandafter{\\@car#7\\@nil}}{(}=\\z@
+            \\draw[Cote arrow] (@5) to[bend right]
+                node[Cote node] {#6\\strut} (@4) ;
+        \\else
+        \\draw[Cote arrow] (@4) -- (@5)
+            node[Cote node] {#6\\strut};
+        \\fi
+        }}
+        }
+
+    \\makeatother
+    \\setcounter{secnumdepth}{3}
+    \\begin{document}
+    \\chapter{Reporte de cálculo del muro H=$(hp+hz) m}
+    \\section{Geometría del muro}
+
+    \\begin{figure}[H]
+    	\\centering
+        \\begin{tikzpicture}[scale=$esc]
+            $(draw_polyline_lcode(Array(grav.nod),1,2,3,8,10,9,5,4,close=1))
+            $(draw_polyline_lcode(Array(grav.nod),5,8,ops="dashed"))
+            $(t3!=0 ? draw_polyline_lcode(Array(grav.nod),7,10,ops="dashed") : "")
+            $(t2!=0 ? draw_polyline_lcode(Array(grav.nod),6,9,ops="dashed") : "")
+            $(draw_elm_label_lcode(prop))
+            $(draw_soilp_rs_lcode(grav,1,1))
+            $(draw_soilp_ls_lcode(grav,maximum(grav.nod[:,1])+1,-0.5-mywall.D/2))
+            $(draw_soil_surface_lcode(mywall,1))
+            $(draw_spliners_lcode(grav))
+            $(draw_wall_dimensions_lcode(mywall))
+            $(draw_qload_lcode(mywall,1))
+        \\end{tikzpicture}
+      \\caption{Geometría del muro de contención}
+    	\\label{fig:geom}
+    \\end{figure}
+    \\section{Cálculo}
+    Para calcular la coeficiente de presión activa de Coulomb usamos:\\\\
+    \\begin{equation}
+    $(ka_dynamic_coulomb_equation_lcode())
+    \\end{equation}
+    El empuje dinámico se calculará con:\\\\
+    \\begin{equation}
+    P_{ae}=\\frac{1}{2}\\gamma_1H^2(1-K_v)K_{ae}
+    \\end{equation}
+    Reemplazando los parámetros correspondientes obtenemos:
+    \\begin{table}[H]
+    \\caption{Coeficientes de presión activa y fuerzas del terreno}
+    \\label{tab:rsf}
+    \\centering
+    \\resizebox{\\linewidth}{!}{
+    \\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+    $(print_rsf_lcode(rsf))
+    \\end{tabular}}
+    \\end{table}
+    \\ifdim 0.0 pt=$(round(mywall.q,digits=0)) pt
+    \\else
+        Por su parte, las fuerzas debidas a la carga distribuida son:
+        \\begin{table}[H]
+        \\caption{Fuerzas debidas a la carga distribuida \$q=$(mywall.q)KN/m^2\$}
+        \\label{tab:uf}
+        \\centering
+        \\begin{tabular}{|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+        $(print_uf_lcode(uf))
+        \\end{tabular}
+        \\end{table}
+    \\fi
+    \$F_xb_y\$ es el momento actuante principal y \$F_yb_x\$ contribuye a la
+    resistencia. Las fuerzas generadas por el peso del muro se muestran en la
+    siguiente tabla:
+    \\begin{table}[H]
+    \\caption{Fuerzas generadas por el muro}
+    \\label{tab:wforce}
+    \\centering
+    \\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{2cm}|m{1.5cm}|m{2.5cm}|}
+    $(print_wf_lcode(prop))
+    \\end{tabular}
+    \\end{table}
+
+    Para calcular el coeficiente de presión pasiva de Rankine usamos:\\\\
+    \\begin{multline}
+    $(kp_rankine_equation_lcode(c=1))
+    \\end{multline}
+
+    Para suelos granulares (\$c'=0\$), esta formula se reduce a:\\\\
+    \\begin{equation}
+    $(kp_rankine_equation_lcode())
+    \\end{equation}\\\\
+
+    Reemplazando los parámetros correspondientes obtenemos:
+    \\begin{table}[H]
+    \\caption{Coeficientes de presión pasiva y fuerzas del terreno}
+    \\label{tab:rsf}
+    \\centering
+    \\resizebox{\\linewidth}{!}{
+    \\begin{tabular}{|m{1.5cm}|m{1.5cm}|m{1.7cm}|m{1.7cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|m{1.5cm}|}
+    $(print_lsf_lcode(lsf))
+    \\end{tabular}}
+    \\end{table}
+    \$F_x\$ y el momento que genera (\$F_xb_y\$) contribuyen a la resistencia por
+    deslizamiento y por volteo respectivamente, \$F_yb_x\$ es un momento actuante.\\\\
+
+    Factor de seguridad contra el volteo:\\\\
+    \\begin{align*}
+    FS_{volteo}=\\dfrac{\\Sigma M_R}{M_o}=\\dfrac{$Mrs}{$Mas}=
+        $(round(factors[1],digits=2))$fsvs\\\\
+    \\end{align*}
+
+    Factor de seguridad contra el deslizamiento:\\\\
+    \\begin{align*}
+    FS_{deslizamiento}&=$(slip_factor_equation_lcode())\\\\
+    &=\\dfrac{$(vfs)}{$(pas)}\\\\
+    &=$(round(factors[2],digits=2))$fsds
+    \\end{align*}
+    Revisión por falla por capacidad de carga:\\\\
+    \\begin{align*}
+    e&=$(eccentricity_equation_lcode())\\\\
+    &=\\dfrac{$(round(B,digits=2))}{2}-\\dfrac{($Mrs)-($Mas)}{$vfs1}\\\\
+    &=$(round(factors[3],digits=3)) m$es\\\\
+    \\end{align*}
+    \\begin{align*}
+    q_{tal\\acute on}^{pie}&=$(soil_pressure_equation_lcode())\\\\
+    &=\\dfrac{$vfs1}{$(round(B,digits=2))}\\left(1\\pm\\dfrac
+        {6\\times$(round(factors[3],digits=3))}{$(round(B,digits=2))}\\right)\\\\
+    q_{pie}&=$(round(factors[4],digits=2))KN/m^2\\\\
+    q_{tal\\acute on}&=$(round(factors[5],digits=2))KN/m^2$qps
+    \\end{align*}
+    $(dsgn)
+    \\end{document}
+    "
+    open("prueba1.tex", "w") do f
+               write(f, a)
+               end
+    #run(pipeline(`pdflatex prueba1`,stdout="log.txt",stderr="err.txt"));
+    run(`pdflatex prueba1`);
+        if Sys.iswindows()
+            run(`cmd /c start prueba1.pdf`);
+        elseif Sys.islinux()
+            run(`xdg-open prueba1.pdf`)
+        else
+        end
+end
+
 """
     draw_wall_lcode(model::Wmodel{<:Real})
 Retorna el código Latex para dibujar los elementos del muro (campo `elm`)
-,el código deberá ser insertado dentro de un entorno `tickpicture` en Latex.
+,el código deberá ser insertado dentro de un entorno `tikzpicture` en Latex.
 """
 function draw_wall_lcode(model::Wmodel{<:Real})
     #debe ser insertado dentro de un entorno tikzpicture
@@ -1654,7 +2025,7 @@ ka_coulomb_equation_lcode()="K_a=\\frac{\\sen^2(\\phi'+\\beta)}{\\sen^2\\beta\\s
     \\delta')\\left[1+\\sqrt{\\frac{\\sen(\\phi'+\\delta')\\sen(\\phi'-\\alpha)}
     {\\sen(\\beta-\\delta')\\sen(\\alpha+\\beta)}}\\right]^2}";
 
-ka_dynamic_coulomb_equation_lcode()="K_a=\\frac{\\sen^2(\\phi'+\\beta-\\theta')}{\\cos\\theta'\\sen^2\\beta\\sen(\\beta-
+ka_dynamic_coulomb_equation_lcode()="K_{ae}=\\frac{\\sen^2(\\phi'+\\beta-\\theta')}{\\cos\\theta'\\sen^2\\beta\\sen(\\beta-
     \\theta'-\\delta')\\left[1+\\sqrt{\\frac{\\sen(\\phi'+\\delta')\\sen(\\phi'-\\theta'-\\alpha)}
     {\\sen(\\beta-\\delta'-\\theta')\\sen(\\alpha+\\beta)}}\\right]^2}";
 
