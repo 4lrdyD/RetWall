@@ -1,12 +1,11 @@
 # RetWall.jl
-`RetWall.jl` es un paquete para diseño de muros de contención, por ahora, solo está
-destinado al diseño de muros típicos usando la teoría de presión de tierra de Rankine,
-sin embargo, se espera que a futuro estás condiciones mejoren. Una de las funcionalidades
+`RetWall.jl` es un paquete para diseño de muros de contención, una de las funcionalidades
 más importantes es que nos generará una memoria de cálculo automática, para esto es
 necesario tener instalado LaTeX.
 
 La memoria o reporte de cálculo incluirá un dibujo, de ser el caso, de la distribución de
-refuerzo propuesta para el muro.
+refuerzo propuesta para el muro, por ahora solo está disponible cuando se elija el análisis
+por la teoría de presión de tierra de Rankine.
 <div align="center"> <img src="images/caratula.png" alt="RetWall.jl" height="600" width="600"></img></div>
 
 ## Prerequisitos
